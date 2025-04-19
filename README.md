@@ -1,7 +1,7 @@
 # Abstrastore
 
 A very simple library that encapsulates a database using Minio as a file store. Designed to be embedded in multiple instances
-of a microservice where the concurrent versions read and write concurrently. The design is based on an append log.
+of a microservice which read and write concurrently. The design is based on an append log.
 It does not support ACID. The store is periodically compacted to improve read rate and cost.
 
 
@@ -30,4 +30,5 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 
 ## TODO
 
+- use local minio, not remote => to test latency
 - add using https://pkg.go.dev/about#adding-a-package

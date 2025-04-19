@@ -1,0 +1,55 @@
+<mxfile host="draw.maxant.ch" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36" version="26.0.7">
+  <diagram name="Page-1" id="Zd5h04fM4v0t592Zn4om">
+    <mxGraphModel dx="1434" dy="754" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-9" value="schema" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="185" y="85" width="335" height="335" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-3" value="table" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="220" y="120" width="220" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-1" value="page" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="170" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-2" value="index-&amp;lt;name&amp;gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="280" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-4" value="page" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="180" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="_BPiIGnPzIFbj7_7w4_a-5" target="_BPiIGnPzIFbj7_7w4_a-10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-5" value="page" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="290" y="190" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-6" value="index-&amp;lt;name&amp;gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="290" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-7" value="index-&amp;lt;name&amp;gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="290" y="300" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-8" value="use DSL to describe schema when creating table" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="185" y="490" width="290" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-10" value="contains header and rows and timestamps per row, so that we know which are latest." style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="175" width="130" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-11" value="library can have an API for caching and cache eviction. clients can integrate that using kafka, callbacks, whatever they want." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="185" y="585" width="290" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-13" value="have a WAL which is always read and overrides indexes as it knows the latest changes" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="510" y="460" width="170" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-14" value="WAL is a folder. each atomic change to the data is a file in the WAL." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="520" y="587.5" width="170" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-15" value="instances of the microservice read the wal folder on each read access and determine which files they don&#39;t have, then they read those. they use those entries as overrides for what they read from minio." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="160" y="710" width="220" height="120" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
