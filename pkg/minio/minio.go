@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"reflect"
 	"strconv"
+	"sync"
 
+	"github.com/abstratium-informatique-sarl/abstrastore/internal/util"
 	"github.com/abstratium-informatique-sarl/abstrastore/pkg/schema"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -18,8 +21,8 @@ import (
 var repo *MinioRepository
 
 type MinioRepository struct {
-	Client     *minio.Client
-	BucketName string
+	client     *minio.Client
+	bucketName string
 
 	// no need for any locks - see https://github.com/minio/minio-go/issues/1125, which seems to have fixed any issues related to goroutine-safety
 }
@@ -49,8 +52,8 @@ func Setup() {
 
 func newMinioRepository(client *minio.Client, bucketName string) *MinioRepository {
     return &MinioRepository{
-        Client:     client,
-        BucketName: bucketName,
+        client:     client,
+        bucketName: bucketName,
     }
 }
 
@@ -58,11 +61,190 @@ func GetRepository() *MinioRepository {
 	return repo
 }
 
-// Param: entity - the address of a struct that should be marshalled to JSON and persisted
-// Param: id - the id of the entity to insert
-// sql: insert into table_name (column1, column2, column3, ...) values (value1, value2, value3, ...)
-//  TODO use reflection to access the ID
-func (r *MinioRepository) InsertIntoTable(ctx context.Context, table schema.Table, entity any, id string) error {
+type DuplicateKeyError struct {
+	Details string
+}
+
+func (e *DuplicateKeyError) Error() string {
+	return e.Details
+}
+
+type NoSuchKeyError struct {
+	Details string
+}
+
+func (e *NoSuchKeyError) Error() string {
+	return e.Details
+}
+
+type TypedQuery[T any] struct {
+	ctx    context.Context
+	template *T
+	repo *MinioRepository
+}
+
+// Param: repo - the repository to use
+// Param: ctx - the context to use
+// Param: template - the template of type T, used to unmarshal the JSON data
+// Returns: a new TypedQuery[T] instance
+func NewTypedQuery[T any](repo *MinioRepository, ctx context.Context, template *T) TypedQuery[T] {
+	return TypedQuery[T]{
+		ctx: ctx,
+		template: template,
+		repo: repo,
+	}
+}
+
+type ContextContainer[T any] struct {
+	ctx   context.Context
+	repo  *MinioRepository
+	template *T
+}
+
+func (c TypedQuery[T]) SelectFromTable(table schema.Table) WhereContainer[T] {
+	return WhereContainer[T]{c.ctx, c.repo, table, c.template}
+}
+
+type WhereContainer[T any] struct {
+	ctx   context.Context
+	repo  *MinioRepository
+	table schema.Table
+	template *T
+}
+
+func (w WhereContainer[T]) WhereIndexedFieldEquals(field string, value string) FindByIndexedFieldContainer[T] {
+	return FindByIndexedFieldContainer[T]{w.ctx, w.repo, w.table, w.template, field, value}
+}
+
+func (w WhereContainer[T]) WhereIdEquals(id string) FindByIdContainer[T] {
+	return FindByIdContainer[T]{w.ctx, w.repo, w.table, w.template, id}
+}
+
+type FindByIndexedFieldContainer[T any] struct {
+	ctx   context.Context
+	repo *MinioRepository
+	table schema.Table
+	template *T
+	field string
+	value string
+}
+
+// sql: select * from table_name where column1 = value1 (column1 is in an index)
+// returns a slice of entities where the foreign key matches
+// Param: destination - the address of a slice of T, where the results will be stored
+func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) error {
+	coordinates := make([]schema.DatabaseTableIdTuple, 0, 10)
+	if err := f.FindIds(&coordinates); err != nil {
+		return err
+	}
+
+	results := make([]T, len(coordinates))
+	errors := make([]*error, len(coordinates))
+	var wg sync.WaitGroup
+	wg.Add(len(coordinates))
+	var mu sync.Mutex
+
+	for i, coordinate := range coordinates {
+		go func(i int, coordinate schema.DatabaseTableIdTuple) {
+			defer wg.Done()
+			path, err := f.table.PathFromIndex(&coordinate)
+			if err != nil {
+				errors[i] = &err
+				return
+			}
+			// read the actual record
+			recordData, err := f.repo.client.GetObject(f.ctx, f.repo.bucketName, path, minio.GetObjectOptions{})
+			if err != nil {
+				errors[i] = &err
+				return
+			}
+			defer recordData.Close()
+			
+			// parse the actual record
+			b, err := io.ReadAll(recordData)
+			if err != nil {
+				errors[i] = &err
+				return
+			}
+			mu.Lock()
+			if err := json.Unmarshal(b, f.template); err != nil {
+				errors[i] = &err
+				return
+			}
+			results[i] = *f.template
+			mu.Unlock()
+		}(i, coordinate)
+	}
+	wg.Wait()
+	for _, err := range errors {
+		if err != nil {
+			return *err
+		}
+	}
+
+	*destination = make([]*T, 0, len(results))
+	for _, result := range results {
+		*destination = append(*destination, &result)
+	}
+	return nil
+}
+
+func (f FindByIndexedFieldContainer[T]) FindIds(destination *[]schema.DatabaseTableIdTuple) error {
+	paths, err := f.repo.selectPathsFromTableWhereIndexedFieldEquals(f.ctx, f.table, f.field, f.value)
+	if err != nil {
+		return err
+	}
+	*destination = make([]schema.DatabaseTableIdTuple, 0, paths.Len())
+	for _, path := range paths.Items() {
+		databaseTableIdTuple, err := schema.DatabaseTableIdTupleFromPath(path)
+		if err != nil {
+			return err
+		}
+		*destination = append(*destination, *databaseTableIdTuple)
+	}
+	return nil
+}
+
+
+type FindByIdContainer[T any] struct {
+	ctx   context.Context
+	repo *MinioRepository
+	table schema.Table
+	template *T
+	id string
+}
+
+// sql: select * from table_name where id = value1
+// returns the entity with the matching id. If no entity is found, returns a NoSuchKeyError
+func (f FindByIdContainer[T]) Find(destination *T) error {
+	path := f.table.Path(f.id)
+	// read the actual record
+	recordData, err := f.repo.client.GetObject(f.ctx, f.repo.bucketName, path, minio.GetObjectOptions{})
+	if err != nil {
+		return err
+	}
+	defer recordData.Close()
+
+	// parse the actual record
+	b, err := io.ReadAll(recordData)
+	if err != nil {
+		respErr := minio.ToErrorResponse(err)
+		if respErr.StatusCode == http.StatusNotFound {
+			return &NoSuchKeyError{Details: fmt.Sprintf("object %s does not exist", path)}
+		} else {
+			return fmt.Errorf("failed to get object with Id %s from table %s: %w", f.id, f.table.Name, err)
+		}
+	}
+	if err := json.Unmarshal(b, f.template); err != nil {
+		return err
+	}
+	*destination = *f.template
+	return nil
+}
+
+// sql: insert into table_name (column1, column2, column3, column4) values (value1, value2, value3, value4)
+// inserts a new entity into the table. If the entity already exists, returns a DuplicateKeyError
+func (r *MinioRepository) InsertIntoTable(ctx context.Context, table schema.Table, entity any) error {
 	data, err := json.Marshal(entity)
 	if err != nil {
 		return err
@@ -70,27 +252,30 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, table schema.Tabl
 	opts := minio.PutObjectOptions{
 		ContentType: "application/json",
 	}
-	_, err = r.Client.PutObject(ctx, r.BucketName, table.Path(id), bytes.NewReader(data), int64(len(data)), opts)
+	opts.SetMatchETagExcept("*") // fail if the object already exists
+
+	// use reflection to fetch the value of the Id
+	var id string
+	id, err = getFieldValueAsString(entity, "Id")
 	if err != nil {
 		return err
+	}
+
+	path := table.Path(id)
+	_, err = r.client.PutObject(ctx, r.bucketName, path, bytes.NewReader(data), int64(len(data)), opts)
+	if err != nil {
+		respErr := minio.ToErrorResponse(err)
+		if respErr.StatusCode == http.StatusPreconditionFailed {
+			return &DuplicateKeyError{Details: fmt.Sprintf("object %s already exists", path)}
+		} else {
+			return fmt.Errorf("failed to put object with Id %s into table %s: %w", id, table.Name, err)
+		}
 	}
 
 	// handle indices
 	// use the path as a tree style index. that way, we simply walk down the tree until we find the key
 	for _, index := range table.Indices {
-		// use reflection to fetch the value of the field that the index is based on
-		value, err := getFieldValueAsString(entity, index.Field)
-		if err != nil {
-			return err
-		}
-
-		data := []byte(table.Path(id)) // store the path to the actual record, i.e. using the primary key
-		opts := minio.PutObjectOptions{
-			ContentType: "text/plain",
-		}
-
-		indexPath := index.Path(value)
-		_, err = r.Client.PutObject(ctx, r.BucketName, indexPath, bytes.NewReader(data), int64(len(data)), opts)
+		err := r.insertIntoIndex(ctx, index, entity, id)
 		if err != nil {
 			return err
 		}
@@ -99,41 +284,74 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, table schema.Tabl
 	return nil
 }
 
+func (r *MinioRepository) insertIntoIndex(ctx context.Context, index schema.Index, entity any, id string) error {
+	// use reflection to fetch the value of the field that the index is based on
+	value, err := getFieldValueAsString(entity, index.Field)
+	if err != nil {
+		return err
+	}
+
+	opts := minio.PutObjectOptions{
+		ContentType: "text/plain",
+	}
+	opts.SetMatchETagExcept("*") // fail if the object already exists
+
+	indexPath := index.Path(value, id)
+	_, err = r.client.PutObject(ctx, r.bucketName, indexPath, bytes.NewReader([]byte{}), 0, opts)
+	if err != nil {
+		respErr := minio.ToErrorResponse(err)
+		if respErr.StatusCode == http.StatusPreconditionFailed {
+			return &DuplicateKeyError{Details: fmt.Sprintf("index entry %s already exists", indexPath)}
+		} else {
+			return fmt.Errorf("failed to put entry %s into index %s of table %s: %w", indexPath, index.Field, index.Table.Name, err)
+		}
+	}
+	return nil
+}
+
 // sql: select * from table_name where column1 = value1 (column1 is in an index)
-func (r *MinioRepository) SelectFromTableWhereIndexedFieldEquals(ctx context.Context, table schema.Table, field string, value string, template any) error {
+func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx context.Context, table schema.Table, field string, value string) (*util.MutList[string], error) {
+	var paths = util.NewMutList[string]()
 	// use the index definition to find the path of the actual record containing the data that the caller wants to read
 	index, err := table.GetIndex(field)
 	if err != nil {
-		return err
+		return paths, err
 	}
-	indexPath := index.Path(value)
-	indexData, err := r.Client.GetObject(ctx, r.BucketName, indexPath, minio.GetObjectOptions{})
-	if err != nil {
-		return err
-	}
-	defer indexData.Close()
+	indexPath := index.PathNoId(value) + "/" // add a slash since we don't do a recursive search, and without it, it just returns the folder, not the files in the folder
 
-	path, err := io.ReadAll(indexData)
-	if err != nil {
-		return err
+	// Channel to hold object names to be removed
+	objectsCh := make(chan minio.ObjectInfo)
+	errors := util.NewMutList[error]()
+
+	// Goroutine to list objects and send them to the channel
+	go func() {
+		defer close(objectsCh) // Close the channel when listing is done
+		listOpts := minio.ListObjectsOptions{
+			Prefix:    indexPath, // default is non-recursive
+		}
+		for object := range r.client.ListObjects(ctx, r.bucketName, listOpts) {
+			if object.Err != nil {
+				errors.Add(object.Err)
+			} else {
+				objectsCh <- object
+			}
+		}
+	}() // End of goroutine
+
+	// Process objects from the channel
+	for object := range objectsCh {
+		if object.Err != nil {
+			errors.Add(object.Err)
+		} else {
+			paths.Add(object.Key)
+		}
 	}
-	
-	// read the actual record
-	recordData, err := r.Client.GetObject(ctx, r.BucketName, string(path), minio.GetObjectOptions{})
-	if err != nil {
-		return err
+
+	if errors.Len() > 0 {
+		return paths, errors.Items()[0]
 	}
-	defer recordData.Close()
-	
-	// parse the actual record
-	b, err := io.ReadAll(recordData)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(b, template); err != nil {
-		return err
-	}
-	return nil
+
+	return paths, nil
 }
 
 func getFieldValueAsString(obj interface{}, fieldName string) (string, error) {

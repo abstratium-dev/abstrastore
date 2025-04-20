@@ -53,8 +53,9 @@ Each "row" (object) is stored as a "file" with its ID being the key of the objec
 
 Indices reference the table files.
 
-Indexes are stored under `<database>/<tableName>/indices/<fieldName>/<firstTwoCharsOfValue>/<value>`.
-Such a file then contains the path of the actual object.
+Indexes are stored under `<database>/<tableName>/indices/<fieldName>/<firstTwoCharsOfValue>/<value>/<database>___<tableName>___<id>`.
+That way you can search for the index entry by the value and get all database/table/id combinations that this index entry refers to.
+The file itself is empty, because the filename contains all the information needed.
 
 #### Writes
 
