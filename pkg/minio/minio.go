@@ -3,10 +3,14 @@ package minio
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"reflect"
+	"strconv"
 
+	"github.com/abstratium-informatique-sarl/abstrastore/pkg/schema"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
@@ -14,8 +18,8 @@ import (
 var repo *MinioRepository
 
 type MinioRepository struct {
-	client     *minio.Client
-	bucketName string
+	Client     *minio.Client
+	BucketName string
 
 	// no need for any locks - see https://github.com/minio/minio-go/issues/1125, which seems to have fixed any issues related to goroutine-safety
 }
@@ -25,18 +29,19 @@ func Setup() {
 	accessKey := os.Getenv("MINIO_ACCESS_KEY_ID")
 	secretKey := os.Getenv("MINIO_SECRET_ACCESS_KEY")
 	bucketName := os.Getenv("MINIO_BUCKET_NAME")
-	useSSL := true
+	useSslString := os.Getenv("MINIO_USE_SSL")
+	useSsl, err := strconv.ParseBool(useSslString)
 
-	if endpoint == "" || accessKey == "" || secretKey == "" || bucketName == "" {
-		panic("Missing MinIO environment variables")
+	if endpoint == "" || accessKey == "" || secretKey == "" || bucketName == "" || err != nil {
+		panic(fmt.Sprintf("Missing / wrong MinIO environment variables: MINIO_URL=%s, MINIO_ACCESS_KEY_ID=%s, MINIO_SECRET_ACCESS_KEY=%s, MINIO_BUCKET_NAME=%s, MINIO_USE_SSL=%s, err=%v", endpoint, accessKey, secretKey, bucketName, useSslString, err))
 	}
 
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: useSSL,
+		Secure: useSsl,
 	})
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("Failed to initialize MinIO client: %v", err))
 	}
 
 	repo = newMinioRepository(client, bucketName)
@@ -44,8 +49,8 @@ func Setup() {
 
 func newMinioRepository(client *minio.Client, bucketName string) *MinioRepository {
     return &MinioRepository{
-        client:     client,
-        bucketName: bucketName,
+        Client:     client,
+        BucketName: bucketName,
     }
 }
 
@@ -53,97 +58,107 @@ func GetRepository() *MinioRepository {
 	return repo
 }
 
-func (r *MinioRepository) CreateFile(ctx context.Context, path string, contents []byte) error {
-	_, err := r.client.PutObject(
-		ctx,
-		r.bucketName,
-		path,
-		bytes.NewReader(contents),
-		int64(len(contents)),
-		minio.PutObjectOptions{ContentType: "application/json"},
-	)
-	return err
-}
-
-func (r *MinioRepository) ReadFile(ctx context.Context, path string) ([]byte, error) {
-	object, err := r.client.GetObject(ctx, r.bucketName, path, minio.GetObjectOptions{})
+// Param: entity - the address of a struct that should be marshalled to JSON and persisted
+// Param: id - the id of the entity to insert
+// sql: insert into table_name (column1, column2, column3, ...) values (value1, value2, value3, ...)
+//  TODO use reflection to access the ID
+func (r *MinioRepository) InsertIntoTable(ctx context.Context, table schema.Table, entity any, id string) error {
+	data, err := json.Marshal(entity)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer object.Close()
-	return io.ReadAll(object)
-}
+	opts := minio.PutObjectOptions{
+		ContentType: "application/json",
+	}
+	_, err = r.Client.PutObject(ctx, r.BucketName, table.Path(id), bytes.NewReader(data), int64(len(data)), opts)
+	if err != nil {
+		return err
+	}
 
-func (r *MinioRepository) UpdateFile(ctx context.Context, path string, contents []byte) error {
-	// no locking required, because CreateFile does that itself
-	return r.CreateFile(ctx, path, contents)
-}
-
-func (r *MinioRepository) DeleteFile(ctx context.Context, path string) error {
-	return r.client.RemoveObject(ctx, r.bucketName, path, minio.RemoveObjectOptions{})
-}
-
-func (r *MinioRepository) DeleteFolder(ctx context.Context, folderPrefix string) error {
-	// thanks to gemini:
-
-	// Channel to hold object names to be removed
-	objectsCh := make(chan minio.ObjectInfo)
-
-	// Goroutine to list objects and send them to the channel
-	go func() {
-		defer close(objectsCh) // Close the channel when listing is done
-		// ListObjectsOptions recursive defaults to false if not set.
-		// Set Recursive to true to find objects in sub-"folders".
-		listOpts := minio.ListObjectsOptions{
-			Prefix:    folderPrefix,
-			Recursive: true,
+	// handle indices
+	// use the path as a tree style index. that way, we simply walk down the tree until we find the key
+	for _, index := range table.Indices {
+		// use reflection to fetch the value of the field that the index is based on
+		value, err := getFieldValueAsString(entity, index.Field)
+		if err != nil {
+			return err
 		}
-		for object := range r.client.ListObjects(ctx, r.bucketName, listOpts) {
-			if object.Err != nil {
-				panic(object.Err)
-			} else {
-				objectsCh <- object
-			}
+
+		data := []byte(table.Path(id)) // store the path to the actual record, i.e. using the primary key
+		opts := minio.PutObjectOptions{
+			ContentType: "text/plain",
 		}
-	}() // End of goroutine
 
-	// --- Perform Bulk Deletion ---
-	// RemoveObjectsOptions can be adjusted if needed (e.g., for GovernanceBypass)
-	opts := minio.RemoveObjectsOptions{
-		// GovernanceBypass: true, // Uncomment if dealing with locked objects under governance mode
+		indexPath := index.Path(value)
+		_, err = r.Client.PutObject(ctx, r.BucketName, indexPath, bytes.NewReader(data), int64(len(data)), opts)
+		if err != nil {
+			return err
+		}
 	}
 
-	// RemoveObjects consumes the objects from the channel
-	errorCh := r.client.RemoveObjects(ctx, r.bucketName, objectsCh, opts)
+	return nil
+}
 
-	// --- Process Deletion Errors ---
-	errors := make([]minio.RemoveObjectError, 0, 10)
-	// Drain the error channel and log any errors
-	for e := range errorCh {
-		errors = append(errors, e)
+// sql: select * from table_name where column1 = value1 (column1 is in an index)
+func (r *MinioRepository) SelectFromTableWhereIndexedFieldEquals(ctx context.Context, table schema.Table, field string, value string, template any) error {
+	// use the index definition to find the path of the actual record containing the data that the caller wants to read
+	index, err := table.GetIndex(field)
+	if err != nil {
+		return err
 	}
+	indexPath := index.Path(value)
+	indexData, err := r.Client.GetObject(ctx, r.BucketName, indexPath, minio.GetObjectOptions{})
+	if err != nil {
+		return err
+	}
+	defer indexData.Close()
 
-	if len(errors) > 0 {
-		return fmt.Errorf("Finished deletion process with %d errors. First one was %w", len(errors), errors[0].Err)
+	path, err := io.ReadAll(indexData)
+	if err != nil {
+		return err
+	}
+	
+	// read the actual record
+	recordData, err := r.Client.GetObject(ctx, r.BucketName, string(path), minio.GetObjectOptions{})
+	if err != nil {
+		return err
+	}
+	defer recordData.Close()
+	
+	// parse the actual record
+	b, err := io.ReadAll(recordData)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(b, template); err != nil {
+		return err
 	}
 	return nil
 }
 
-func (r *MinioRepository) ListFiles(ctx context.Context, prefix string) ([]string, error) {
-	var files []string
-	objectCh := r.client.ListObjects(ctx, r.bucketName, minio.ListObjectsOptions{
-		Prefix:    prefix,
-		Recursive: true,
-	})
-	for object := range objectCh {
-		if object.Err != nil {
-			return nil, object.Err
-		}
-		files = append(files, object.Key)
-	}
-	return files, nil
-}
+func getFieldValueAsString(obj interface{}, fieldName string) (string, error) {
+	v := reflect.ValueOf(obj)
 
-func (r *MinioRepository) GetReader(ctx context.Context, path string) (io.ReadCloser, error) {
-	return r.client.GetObject(ctx, r.bucketName, path, minio.GetObjectOptions{})
+	// If it's a pointer, get the value it points to
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+
+	// Make sure we're dealing with a struct
+	if v.Kind() != reflect.Struct {
+		return "", fmt.Errorf("expected a struct, got %s", v.Kind())
+	}
+
+	// Get the field by name
+	field := v.FieldByName(fieldName)
+	if !field.IsValid() {
+		return "", fmt.Errorf("no such field: %s", fieldName)
+	}
+
+	// check it is a string, otherwise create an error
+	if field.Kind() != reflect.String {
+		return "", fmt.Errorf("field %s is not a string", fieldName)
+	}
+
+	return field.Interface().(string), nil
 }

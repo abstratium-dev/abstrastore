@@ -3,11 +3,11 @@ package tests
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/abstratium-informatique-sarl/abstrastore/pkg/minio"
@@ -17,7 +17,11 @@ import (
 
 func TestReadWrite(t *testing.T) {
 	assert := assert.New(t)
-	godotenv.Load("/w/abstratium-abstrastore.env")
+	os.Setenv("MINIO_URL", "127.0.0.1:9000")
+	os.Setenv("MINIO_ACCESS_KEY_ID", "rootuser")
+	os.Setenv("MINIO_SECRET_ACCESS_KEY", "rootpass")
+	os.Setenv("MINIO_BUCKET_NAME", "abstrastore-tests")
+	os.Setenv("MINIO_USE_SSL", "false")
 	minio.Setup()
 	id := uuid.New().String()
 	schema := "integration-tests"
@@ -43,7 +47,7 @@ func TestReadWrite(t *testing.T) {
 		if err := writer.Append(context.Background(), schema, table, id, entity); err != nil {
 			t.Fatal(err)
 		}
-		fmt.Printf("Write after %v\n", time.Since(start))
+		fmt.Printf("Write after total %v\n", time.Since(start))
 	})
 
 	t.Run("Write again", func(t *testing.T) {
@@ -60,7 +64,7 @@ func TestReadWrite(t *testing.T) {
 		if err := writer.Append(context.Background(), schema, table, id, entity); err != nil {
 			t.Fatal(err)
 		}
-		fmt.Printf("Second write after %v\n", time.Since(start))
+		fmt.Printf("Second write after total %v\n", time.Since(start))
 	})
 
 	t.Run("Read", func(t *testing.T) {
@@ -69,7 +73,7 @@ func TestReadWrite(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		fmt.Printf("Read after %v\n", time.Since(start))
+		fmt.Printf("Read after total %v\n", time.Since(start))
 
 		assert.Equal("John Doe", entity.Name)
 	})
