@@ -10,6 +10,22 @@ Supports indexes on all fields.
 
 No current support for schema migrations.
 
+## Motivation
+
+- Blob storage is cheaper than a database in the cloud.
+- We don't want to install any extra infrastructure, just Minio and our microservices.
+- The solution should be cheap to run, e.g. with Google Cloud Run and Minio.
+
+## Non-Functional Requirements / Quality Attributes
+
+- The solution should be eventually consistent.
+- It must not fulfil ACID properties.
+- It must support multiple instances of a service (container/pod) reading and writing concurrently.
+- It does not need to support recovery in the case of a crash.
+- It does not need to support transactions.
+- It does not need to support schema migrations.
+
+
 ## Roadmap
 
 - caching and cache eviction
