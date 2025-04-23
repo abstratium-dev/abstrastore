@@ -251,6 +251,10 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, table schema.Tabl
 	}
 	opts := minio.PutObjectOptions{
 		ContentType: "application/json",
+		// TODO useful for auditing, when versioning is enabled
+		// UserMetadata: map[string]string{
+		// 	"who, what, when, for auditing purposes, same for updates": id,
+		// },
 	}
 	opts.SetMatchETagExcept("*") // fail if the object already exists
 
@@ -290,7 +294,8 @@ func (r *MinioRepository) insertIntoIndex(ctx context.Context, index schema.Inde
 	if err != nil {
 		return err
 	}
-
+TODO what about idempotence, which is our strategy for recovery. => silently ignore existing index entries, since they are correct if they exist
+let the user decide if they want to upsert -> provide a different method for that.
 	opts := minio.PutObjectOptions{
 		ContentType: "text/plain",
 	}

@@ -1,20 +1,22 @@
 # Abstrastore
 
-A very simple library that encapsulates a database using Minio as a file store. Designed to be embedded in multiple instances
-of a microservice (containers/pods) which read and write concurrently. 
+A very simple library that encapsulates an eventually consistent database using Minio as a file store. Designed to be embedded in multiple instances of a microservice (containers/pods) which read and write concurrently. 
 
-Does not support transactions. Or ACID.
+Does not support transactions or full ACID properties. It is durable and tries to be consistent.
 
 Supports reading by primary and foreign keys.
 Supports indexes on all fields.
 
-No current support for schema migrations.
+No current support for schema migrations. You describe the schema with a DSL which is used at runtime to determine
+what indexes to write. If you need to migrate data, you would add that to your program and temporarily have multiple
+versions of your DSL.
 
 ## Motivation
 
-- Blob storage is cheaper than a database in the cloud.
+- Blob storage is cheaper than an SQL database in the cloud.
 - We don't want to install any extra infrastructure, just Minio and our microservices.
 - The solution should be cheap to run, e.g. with Google Cloud Run and Minio.
+
 
 ## Non-Functional Requirements / Quality Attributes
 
@@ -25,6 +27,18 @@ No current support for schema migrations.
 - It does not need to support transactions.
 - It does not need to support schema migrations.
 
+## Use Cases With A Good Fit
+
+- Small applications where data is not read or written very frequently
+  - Blob Stores / S3 are optimized for large-scale data storage and typically charge based on the amount of data stored, with additional costs for data retrieval and requests. It is often more cost-effective for storing large volumes of data that don't require frequent access or complex querying.
+  - Databases like MongoDB and SQL databases usually charge based on the compute resources (CPU, memory) and storage used. They are designed for data that requires complex querying, transactions, and real-time access, which can make them more expensive for large-scale storage.
+  - Use Case: S3 is ideal for static file storage, backups, and data lakes, where data retrieval is less frequent. Databases are better for applications requiring real-time data processing and complex queries.
+  - Pricing Models: The exact cost comparison can vary based on the specific use case, data access patterns, and the cloud provider's pricing model. It's important to analyze the pricing details of each service to determine the cost-effectiveness for your specific needs.
+
+## Further Thoughts
+
+- Isolation is less important in systems where there are not many writes, because the chances of reading stale data are low.
+- Atomicity is replaced by idempotency. If an operation fails, the client should retry the operation. Agreed, if a client doesn't retry, data could be inconsistent. But, we use a kind of WAL (write ahead logging) to ensure that data is eventually consistent, by initially writing a single file containing all changes that are to be made, and if that file exists longer than the timeout, then the operation is retried automatically by the library. Failures should be logged for an operator to take action.
 
 ## Roadmap
 
@@ -99,7 +113,8 @@ mkdir -p /temp/minio-data
 
 docker run \
     --rm -it \
-    --name minio \
+    --name abstratium-minio \
+    --network abstratium \
     -p 127.0.0.1:9000:9000 \
     -p 127.0.0.1:9090:9090 \
     -v "/temp/minio-data:/data:rw" \
@@ -136,8 +151,30 @@ export VERS=0.0.x
 git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push origin main v${VERS}
 ```
 
+## Links
+
+- ACID Wikipedia: https://en.wikipedia.org/wiki/ACID
+- Eventual consistency Wikipedia: https://en.wikipedia.org/wiki/Eventual_consistency
+- Eventually Consistent by Werner Vogels (2009): https://dl.acm.org/doi/pdf/10.1145/1435417.1435432
+- Notes on distributed databases (1979): https://dominoweb.draco.res.ibm.com/reports/RJ2571.pdf
+
+
 ## TODO
 
+- make interface have insert, upsert, update. insert and update fail if the object exists, or doesn't exist respectively.
+- use the table here https://en.wikipedia.org/wiki/Isolation_(database_systems) to work out what kind of isolation level we actually support.
+- use etags when updating
+- document using etags when updating
+- think of scenarios which are not covered by the current implementation and document them
+  - how can we test stuff like that? by forcing the lib to wait for a certain time during testing, part way thru its process
+- atomicity as implemented here only refers to updating records and indexes, and does NOT refer to multiple inserts/updates/deletes at the same time -> since we have no transactions
+- so how is BASE eventually consistent, if it has no transactions?
+  - base will keep trying to write to other nodes and so eventually they will be consistent. that isn't the problem we are trying to solve. rather, we don't support transactions and so if a system failure occurs during a set of writes (a process) then the system will not know about the other things that the user wanted to do.  it can however try and ensure that the indexes are up to date with the data, using the mechanism described above which writes a single file containing all intentions, before then executing them.
+- write an atomic file when inserting/updating data. this is used if the system crashes, to recover. that way we at least have consistency and durability. => this is a WAL, but deleted once the individual files are created
+- make tradeoff between idempotence and recognising that the data is already there, configurable?
+- describe how indexes are written idempotently and if two writes occur concurrently, then the last one will win, but only in the situation where the tx1 inserts data, tx2 inserts data, tx2 writes index files, tx1 writes index files.
 - use local minio, not remote => to test latency
 - add using https://pkg.go.dev/about#adding-a-package
 - sql parsing - https://github.com/xwb1989/sqlparser
+- which consistency do we want to support?
+- versioning to support auditing requirements

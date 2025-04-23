@@ -1,53 +1,224 @@
 <mxfile host="draw.maxant.ch" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36" version="26.0.7">
   <diagram name="Page-1" id="Zd5h04fM4v0t592Zn4om">
-    <mxGraphModel dx="1434" dy="754" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="2234" dy="754" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-9" value="schema" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" vertex="1" parent="1">
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-1" value="bucket" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="162.5" y="50" width="367.5" height="390" as="geometry" />
+        </mxCell>
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-9" value="database" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" parent="1" vertex="1">
           <mxGeometry x="185" y="85" width="335" height="335" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-3" value="table" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" vertex="1" parent="1">
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-3" value="table" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" parent="1" vertex="1">
           <mxGeometry x="220" y="120" width="220" height="250" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-1" value="page" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-1" value="objects" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
           <mxGeometry x="270" y="170" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-2" value="index-&amp;lt;name&amp;gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-2" value="index-&amp;lt;name&amp;gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
           <mxGeometry x="270" y="280" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-4" value="page" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="280" y="180" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="_BPiIGnPzIFbj7_7w4_a-5" target="_BPiIGnPzIFbj7_7w4_a-10">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-5" value="page" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="290" y="190" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-6" value="index-&amp;lt;name&amp;gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-6" value="index-&amp;lt;name&amp;gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
           <mxGeometry x="280" y="290" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-7" value="index-&amp;lt;name&amp;gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-7" value="index-&amp;lt;name&amp;gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
           <mxGeometry x="290" y="300" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-8" value="use DSL to describe schema when creating table" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
-          <mxGeometry x="185" y="490" width="290" height="60" as="geometry" />
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-8" value="use DSL to describe schema when creating table" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" parent="1" vertex="1">
+          <mxGeometry x="20" y="10" width="290" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-10" value="contains header and rows and timestamps per row, so that we know which are latest." style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="560" y="175" width="130" height="90" as="geometry" />
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-11" value="library can have an API for caching and cache eviction. clients can integrate that using minio notifications. if they fail, all caches must be cleared!" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" parent="1" vertex="1">
+          <mxGeometry x="201.25" y="460" width="290" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-11" value="library can have an API for caching and cache eviction. clients can integrate that using kafka, callbacks, whatever they want." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
-          <mxGeometry x="185" y="585" width="290" height="85" as="geometry" />
+        <mxCell id="_BPiIGnPzIFbj7_7w4_a-14" value="transactions:&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;a) use denormalised designs to avoid transactions, as described in mongodb docs&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;b) if you create or update or delete an object, the CUD of the related indexes is handled atomically in that we create a file containing all intentions, which is eventually consistent. no isolation guarantees, since as we write it, readers will have access. the write is durable because failures will be recovered so long as that atomic file exists.&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" parent="1" vertex="1">
+          <mxGeometry x="520" y="450" width="270" height="217.5" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-13" value="have a WAL which is always read and overrides indexes as it knows the latest changes" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
-          <mxGeometry x="510" y="460" width="170" height="80" as="geometry" />
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-2" value="objects" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="180" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-14" value="WAL is a folder. each atomic change to the data is a file in the WAL." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
-          <mxGeometry x="520" y="587.5" width="170" height="80" as="geometry" />
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-3" value="objects" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="290" y="190" width="120" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="_BPiIGnPzIFbj7_7w4_a-15" value="instances of the microservice read the wal folder on each read access and determine which files they don&#39;t have, then they read those. they use those entries as overrides for what they read from minio." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
-          <mxGeometry x="160" y="710" width="220" height="120" as="geometry" />
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-6" value="time" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" vertex="1" parent="1">
+          <mxGeometry x="-130" y="712" width="1590" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-7" value="Start&lt;div&gt;Transaction&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="-60" y="890" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-8" value="Process 1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="-260" y="805" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-9" value="Process n, reading" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="-260" y="1120" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-10" value="Insert" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=5;fontSize=20;" vertex="1" parent="1">
+          <mxGeometry x="-260" y="740" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-12" value="Process m, writing" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="-260" y="1220" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-13" value="Tries to read with Key X" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="-260" y="1160" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-14" value="Wants to write with Key X" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="-250" y="860" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-15" value="Insert" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" vertex="1" parent="1">
+          <mxGeometry x="-130" y="801" width="1470" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-16" value="Framework is in grey" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="-136" y="895" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-17" value="Also wants to write with Key X" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="-250" y="1270" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-19" value="Write intentions atomically" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="52.5" y="890" width="187.5" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-20" value="Creates a single file in the transaction folder containing all the objects that need to be created including index entries" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="72.25" y="934" width="148" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-21" value="&lt;b&gt;&lt;u&gt;Folders&lt;/u&gt;&lt;/b&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;ul&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/intensions.json&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/data/&amp;lt;pk&amp;gt;.json&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/indices/&amp;lt;field&amp;gt;/&amp;lt;prefix&amp;gt;/&amp;lt;db&amp;gt;___&amp;lt;table&amp;gt;___&amp;lt;pk&amp;gt;&lt;/span&gt;&lt;/li&gt;&lt;li&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/commit&lt;/li&gt;&lt;/ul&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;ul&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/data/&amp;lt;pk&amp;gt;.json&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/indices/&amp;lt;field&amp;gt;/&amp;lt;prefix&amp;gt;/&amp;lt;db&amp;gt;___&amp;lt;table&amp;gt;___&amp;lt;pk&amp;gt;&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=left;" vertex="1" parent="1">
+          <mxGeometry x="-490" y="473.75" width="620" height="206.25" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-23" value="Write object file&lt;div&gt;in transaction folder&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="240" y="890" width="340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-44" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-25" target="8gTCPd0678HFJd0iT-Pa-53">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="406" y="1070" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-25" value="Writes object file to transaction folder.&lt;div&gt;&lt;br&gt;&lt;div&gt;&lt;b&gt;Alternative 1:&amp;nbsp;&lt;/b&gt;Fails if object exists (see Process M below)&lt;/div&gt;&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="242" y="934" width="328" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-26" value="inconsistency window" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="936" y="860" width="280" height="21" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-27" value="Write index files" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="581" y="890" width="159" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-28" value="Write index files&lt;div&gt;in transaction folder&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="588" y="893" width="159" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-29" value="Since there are many files to write, we create an internal transaction, simply create a uuid in memory, not yet peristed" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="-71" y="978" width="109" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-30" value="Copy all objects in Transaction&lt;div&gt;to target folders&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="946" y="890" width="280" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-31" value="Delete transaction folder" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1216" y="890" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-41" value="Writes index entries to transaction folder.&lt;div&gt;&lt;b&gt;Alt 2:&amp;nbsp;&lt;/b&gt;Fails if entry exists (see Process M below)&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="569" y="928" width="178" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-45" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-41" target="8gTCPd0678HFJd0iT-Pa-53">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="500" y="1020" as="sourcePoint" />
+            <mxPoint x="1160" y="940" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="658" y="1070" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-47" value="" style="ellipse;html=1;shape=endState;fillColor=strokeColor;" vertex="1" parent="1">
+          <mxGeometry x="1436" y="895" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-48" value="&lt;div&gt;&lt;b&gt;Alt 3:&amp;nbsp;&lt;/b&gt;Fails if files already exist.&lt;/div&gt;&lt;div&gt;&lt;b&gt;Alt 4:&lt;/b&gt;&amp;nbsp;if a failure occurs, then the transaction folder can be used to recover, by attempting to complete.&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="946" y="925" width="300" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-49" value="Draw picture of what happens if a non-committed transaction needs to be recovered after a timeout" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-620" y="1190" width="290" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-51" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-50" target="8gTCPd0678HFJd0iT-Pa-21">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-50" value="Timestamp in ISO-8601 format is used in transaction to know when one has timed out and needs deleting" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="-530" y="380" width="290" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-52" value="Commit" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="740" y="890" width="93" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-54" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;dashed=1;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-53" target="8gTCPd0678HFJd0iT-Pa-31">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="949" y="1070" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-53" value="Rollback" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="740" y="1050" width="93" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-55" value="Write commit file&lt;div&gt;in tx folder&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="830" y="890" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-56" value="Used during recovery to&amp;nbsp;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;complete the transaction&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;if possible&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="820" y="924" width="114" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-58" value="If a CUD is done inside an external transaction then break up this flow and allow multiple statements to be written inside the transaction." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-620" y="750" width="290" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-59" value="Any time a CUD is done, we should check if the object / index is already in use within any transaction we can find. if it is, then fail fast - this is like an optimistic lock exception.&amp;nbsp; It ensures consistency! It ensures that changes were made based on the state that was read by the client, rather than some blind update" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-620" y="1010" width="310" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-61" value="Partial find, depending on how it&#39;s searched for" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="946" y="1149" width="274" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-62" value="Consistent" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1216" y="1148" width="244" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-63" value="Not Found" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" vertex="1" parent="1">
+          <mxGeometry x="850" y="1190" width="610" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-64" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;dashed=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-53" target="8gTCPd0678HFJd0iT-Pa-63">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="843" y="1080" as="sourcePoint" />
+            <mxPoint x="1326" y="940" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="787" y="1205" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-60" value="Not Found" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" vertex="1" parent="1">
+          <mxGeometry x="-128.5" y="1148" width="1078.5" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-65" value="Would succeed,&amp;nbsp;&lt;div&gt;causing Process 1 to fail&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" vertex="1" parent="1">
+          <mxGeometry x="-128.5" y="1256.5" width="188.5" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-66" value="Draw picture of what happens if a COMMITTED transaction needs to be recovered after a timeout" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-620" y="1300" width="290" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-67" value="Any technical failure during this process, e.g. unable to write" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1027" width="200" height="86" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-68" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-67" target="8gTCPd0678HFJd0iT-Pa-53">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="416" y="1030" as="sourcePoint" />
+            <mxPoint x="770" y="1080" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-70" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-69" target="8gTCPd0678HFJd0iT-Pa-19">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-69" value="&lt;span style=&quot;text-align: left;&quot;&gt;intensions.json is used&amp;nbsp;&lt;/span&gt;to reduce the amount of time that a concurrent transaction like Process M can write before Process 1 does, thereby locking objects and index entries in preparation for a commit.&amp;nbsp;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="162.5" y="582.5" width="290" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-71" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-69" target="8gTCPd0678HFJd0iT-Pa-21">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="293" y="678" as="sourcePoint" />
+            <mxPoint x="168" y="900" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-72" value="need to show search for all other intention files" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-130" y="1010" width="168" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-73" value="Optimistic Lock Exception - fails because an Insert is illegal, and the client needs to start from the new basis. N.B. it will fail again if were to read and insert, since it would not see anything during the read!" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="65.75" y="1256.5" width="1394.25" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-74" value="There is only one intentions file per TX because the pod that creates it has knowledge of everything happening in that transaction, in memory and so it can keep updating the file.&amp;nbsp; would it be cool to support distributed transactions where multiple services write to the same transaction? no, not necessary because we should use orchestration, long running transactions and other well known mechanisms." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-770" y="872.5" width="460" height="105.5" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
