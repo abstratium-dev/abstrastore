@@ -26,6 +26,10 @@ versions of your DSL.
 - It does not need to support recovery in the case of a crash.
 - It does not need to support transactions.
 - It does not need to support schema migrations.
+- Supports REPEATABLE READ isolation level.
+- Supports atomic operations, e.g. multiple CUD operations in a transaction.
+- Supports optimistic locking out of the box. Any CUD operation will fail if a different transaction has already modified the object in question within it's own transaction. While that transaction might still roll back, the library assumes it won't, and doesn't block the current transaction and instead fails fast, rolling back any changes made in that current transaction. See https://en.wikipedia.org/wiki/Multiversion_concurrency_control: "A Write cannot complete if there are other outstanding transactions with an earlier Read Timestamp (RTS) to the same object".
+- TODO no wait, we support "snapshot isolation" => https://en.wikipedia.org/wiki/Snapshot_isolation which comes from https://en.wikipedia.org/wiki/Multiversion_concurrency_control
 
 ## Use Cases With A Good Fit
 
@@ -40,9 +44,60 @@ versions of your DSL.
 - Isolation is less important in systems where there are not many writes, because the chances of reading stale data are low.
 - Atomicity is replaced by idempotency. If an operation fails, the client should retry the operation. Agreed, if a client doesn't retry, data could be inconsistent. But, we use a kind of WAL (write ahead logging) to ensure that data is eventually consistent, by initially writing a single file containing all changes that are to be made, and if that file exists longer than the timeout, then the operation is retried automatically by the library. Failures should be logged for an operator to take action.
 
+## Isolation
+
+### Dirty Reads
+
+- https://en.wikipedia.org/wiki/Isolation_(database_systems)#Dirty_reads
+- We aim to avoid dirty reads.
+
+So we can achieve these isolation levels: READ COMMITTED, REPEATABLE READ, SERIALIZABLE
+
+### Non-repeatable reads
+
+- https://en.wikipedia.org/wiki/Isolation_(database_systems)#Non-repeatable_reads
+- We cannot support this, because of the inconsistency window when we transfer the objects from the transaction path to their final path.
+
+So we can achieve  READ COMMITTED or READ UNCOMMITTED. The latter is bad, because it can lead to dirty reads.
+
+Or, if we used a local key based cache to see what has already been written / read, we can achieve REPEATABLE READ or SERIALIZABLE.
+
+### Phantom reads
+
+- https://en.wikipedia.org/wiki/Isolation_(database_systems)#Phantom_reads
+- We cannot avoid this without either locking everything (serial, undesirable in terms of scalability) or copying all data. So at best we can achieve READ UNCOMMITTED, READ COMMITTED or REPEATABLE READ.
+
+### Result
+
+- READ UNCOMMITTED - undesired
+- READ COMMITTED - possible
+- REPEATABLE READ - possible if every read-by-key is checked against the transaction folder to see what has already been read
+- SERIALIZABLE - unachievable and undesired
+
+REPEATABLE READ is better than READ COMMITTED, since the former avoids dirty read and non-repeatable read, whereas the latter only avoids dirty read.
+
+### Comparison to other DBs
+
+https://www.linkedin.com/pulse/default-isolation-level-databases-sql-server-oracle-mysql-servino-b7lqf/
+
+|DB|Default|Notes|
+|---|---|---|
+|PostgreSQL|READ COMMITTED|-
+|MySQL|REPEATABLE READ|-
+|Oracle|READ COMMITTED|-
+|SQL Server|READ COMMITTED|-
+|Azure SQL|READ COMMITTED|-
+
+### Conclusion
+
+We should aim for REPEATABLE READ.
+
+But wait! What about snapshot isolation, https://en.wikipedia.org/wiki/Snapshot_isolation which comes from https://en.wikipedia.org/wiki/Multiversion_concurrency_control? 
+
 ## Roadmap
 
 - caching and cache eviction
+- conflict resolution? it would be easy to have a callback from the library to client code which deals with reconcilliation, and the lib could also offer "last writer wins", by default. See https://en.wikipedia.org/wiki/Eventual_consistency#Conflict_resolution
 - observability
 - metrics
 
@@ -162,8 +217,6 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 ## TODO
 
 - make interface have insert, upsert, update. insert and update fail if the object exists, or doesn't exist respectively.
-- use the table here https://en.wikipedia.org/wiki/Isolation_(database_systems) to work out what kind of isolation level we actually support.
-- use etags when updating
 - document using etags when updating
 - think of scenarios which are not covered by the current implementation and document them
   - how can we test stuff like that? by forcing the lib to wait for a certain time during testing, part way thru its process

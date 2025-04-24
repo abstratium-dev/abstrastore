@@ -21,8 +21,8 @@ import (
 var repo *MinioRepository
 
 type MinioRepository struct {
-	client     *minio.Client
-	bucketName string
+	Client     *minio.Client
+	BucketName string
 
 	// no need for any locks - see https://github.com/minio/minio-go/issues/1125, which seems to have fixed any issues related to goroutine-safety
 }
@@ -52,8 +52,8 @@ func Setup() {
 
 func newMinioRepository(client *minio.Client, bucketName string) *MinioRepository {
     return &MinioRepository{
-        client:     client,
-        bucketName: bucketName,
+        Client:     client,
+        BucketName: bucketName,
     }
 }
 
@@ -153,7 +153,7 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) error {
 				return
 			}
 			// read the actual record
-			recordData, err := f.repo.client.GetObject(f.ctx, f.repo.bucketName, path, minio.GetObjectOptions{})
+			recordData, err := f.repo.Client.GetObject(f.ctx, f.repo.BucketName, path, minio.GetObjectOptions{})
 			if err != nil {
 				errors[i] = &err
 				return
@@ -219,7 +219,7 @@ type FindByIdContainer[T any] struct {
 func (f FindByIdContainer[T]) Find(destination *T) error {
 	path := f.table.Path(f.id)
 	// read the actual record
-	recordData, err := f.repo.client.GetObject(f.ctx, f.repo.bucketName, path, minio.GetObjectOptions{})
+	recordData, err := f.repo.Client.GetObject(f.ctx, f.repo.BucketName, path, minio.GetObjectOptions{})
 	if err != nil {
 		return err
 	}
@@ -266,7 +266,7 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, table schema.Tabl
 	}
 
 	path := table.Path(id)
-	_, err = r.client.PutObject(ctx, r.bucketName, path, bytes.NewReader(data), int64(len(data)), opts)
+	_, err = r.Client.PutObject(ctx, r.BucketName, path, bytes.NewReader(data), int64(len(data)), opts)
 	if err != nil {
 		respErr := minio.ToErrorResponse(err)
 		if respErr.StatusCode == http.StatusPreconditionFailed {
@@ -294,15 +294,21 @@ func (r *MinioRepository) insertIntoIndex(ctx context.Context, index schema.Inde
 	if err != nil {
 		return err
 	}
+
+	if true {
+		panic("TODO")
+	}
+	/*
 TODO what about idempotence, which is our strategy for recovery. => silently ignore existing index entries, since they are correct if they exist
 let the user decide if they want to upsert -> provide a different method for that.
+*/
 	opts := minio.PutObjectOptions{
 		ContentType: "text/plain",
 	}
 	opts.SetMatchETagExcept("*") // fail if the object already exists
 
 	indexPath := index.Path(value, id)
-	_, err = r.client.PutObject(ctx, r.bucketName, indexPath, bytes.NewReader([]byte{}), 0, opts)
+	_, err = r.Client.PutObject(ctx, r.BucketName, indexPath, bytes.NewReader([]byte{}), 0, opts)
 	if err != nil {
 		respErr := minio.ToErrorResponse(err)
 		if respErr.StatusCode == http.StatusPreconditionFailed {
@@ -334,7 +340,7 @@ func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx contex
 		listOpts := minio.ListObjectsOptions{
 			Prefix:    indexPath, // default is non-recursive
 		}
-		for object := range r.client.ListObjects(ctx, r.bucketName, listOpts) {
+		for object := range r.Client.ListObjects(ctx, r.BucketName, listOpts) {
 			if object.Err != nil {
 				errors.Add(object.Err)
 			} else {
