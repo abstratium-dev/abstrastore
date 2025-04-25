@@ -1,11 +1,11 @@
 <mxfile host="draw.maxant.ch" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36" version="26.0.7">
   <diagram name="Page-1" id="Zd5h04fM4v0t592Zn4om">
-    <mxGraphModel dx="6380" dy="2913" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="3649" dy="1477" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
         <mxCell id="8gTCPd0678HFJd0iT-Pa-184" value="Why do we lock keys?" style="verticalLabelPosition=middle;verticalAlign=top;html=1;shape=mxgraph.basic.rect;fillColor2=none;strokeWidth=1;size=20;indent=5;labelPosition=center;align=center;" vertex="1" parent="1">
-          <mxGeometry x="937" y="954.5" width="403" height="503" as="geometry" />
+          <mxGeometry x="937" y="954.5" width="403" height="585.5" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-1" value="bucket" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" vertex="1" parent="1">
           <mxGeometry x="2.5" y="-80" width="367.5" height="390" as="geometry" />
@@ -518,6 +518,18 @@
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-211" value="Failure to create the rollback file will lead to a timeout, as documented to the left and up." style="shape=partialRectangle;whiteSpace=wrap;html=1;right=0;top=0;bottom=0;fillColor=none;routingCenterX=-0.5;align=left;verticalAlign=bottom;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="843" y="3920" width="97" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-212" value="Where do i describe that every time an object is written in a transaction, before we do that, we add that the path should be checked no later than a configurable number of times after the transaction timeout of that transaction, in order to tidy up old versions that are no longer required?" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-840" y="1330" width="290" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-213" value="how many old versions do we need? third and more that are older than X hours can be deleted?" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-900" y="1472.5" width="290" height="67.5" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-214" value="dont support individual transaction times, rather just a global one. because you should use other mechanisms for long running transactions rather than locking objects for massive amounts of time. DOCUMENT this." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-890" y="1565" width="290" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-215" value="See &lt;a href=&quot;https://en.wikipedia.org/wiki/Multiversion_concurrency_control&quot;&gt;https://en.wikipedia.org/wiki/Multiversion_concurrency_control&lt;/a&gt;: &quot;A Write cannot complete if there are other outstanding transactions with an earlier Read Timestamp (RTS) to the same object&quot;." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="950" y="1450" width="370" height="75" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
