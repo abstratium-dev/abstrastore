@@ -69,6 +69,8 @@ Or, if we used a local key based cache to see what has already been written / re
 
 ### Result
 
+From worst to best:
+
 - READ UNCOMMITTED - undesired
 - READ COMMITTED - possible
 - REPEATABLE READ - possible if every read-by-key is checked against the transaction folder to see what has already been read
@@ -92,12 +94,13 @@ https://www.linkedin.com/pulse/default-isolation-level-databases-sql-server-orac
 
 We should aim for REPEATABLE READ.
 
-But wait! What about snapshot isolation, https://en.wikipedia.org/wiki/Snapshot_isolation which comes from https://en.wikipedia.org/wiki/Multiversion_concurrency_control? 
+But wait! What about snapshot isolation, https://en.wikipedia.org/wiki/Snapshot_isolation which comes from https://en.wikipedia.org/wiki/Multiversion_concurrency_control? Yes, snapshot isolation should be our goal.
 
 ## Roadmap
 
 - caching and cache eviction
 - conflict resolution? it would be easy to have a callback from the library to client code which deals with reconcilliation, and the lib could also offer "last writer wins", by default. See https://en.wikipedia.org/wiki/Eventual_consistency#Conflict_resolution
+  - but is it necessary, with our strategy to fail fast with optimistic locking?
 - observability
 - metrics
 

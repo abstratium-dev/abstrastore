@@ -1,9 +1,12 @@
 <mxfile host="draw.maxant.ch" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36" version="26.0.7">
   <diagram name="Page-1" id="Zd5h04fM4v0t592Zn4om">
-    <mxGraphModel dx="8770" dy="4170" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="6380" dy="2913" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-184" value="Why do we lock keys?" style="verticalLabelPosition=middle;verticalAlign=top;html=1;shape=mxgraph.basic.rect;fillColor2=none;strokeWidth=1;size=20;indent=5;labelPosition=center;align=center;" vertex="1" parent="1">
+          <mxGeometry x="937" y="954.5" width="403" height="503" as="geometry" />
+        </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-1" value="bucket" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;" vertex="1" parent="1">
           <mxGeometry x="2.5" y="-80" width="367.5" height="390" as="geometry" />
         </mxCell>
@@ -83,7 +86,7 @@
         <mxCell id="8gTCPd0678HFJd0iT-Pa-20" value="Creates/Updates a single file in the transaction folder containing all the objects that need to be written, including index entries" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
           <mxGeometry x="82.25" y="1169" width="148" height="86" as="geometry" />
         </mxCell>
-        <mxCell id="8gTCPd0678HFJd0iT-Pa-21" value="&lt;b&gt;&lt;u&gt;Folders&lt;/u&gt;&lt;/b&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;ul&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/intentions.json&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/data/&amp;lt;pk&amp;gt;.json&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/indices/&amp;lt;field&amp;gt;/&amp;lt;prefix&amp;gt;/&amp;lt;db&amp;gt;___&amp;lt;table&amp;gt;___&amp;lt;pk&amp;gt;&lt;/span&gt;&lt;/li&gt;&lt;li&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/commit&lt;/li&gt;&lt;/ul&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;ul&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/data/&amp;lt;pk&amp;gt;.json&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/indices/&amp;lt;field&amp;gt;/&amp;lt;prefix&amp;gt;/&amp;lt;db&amp;gt;___&amp;lt;table&amp;gt;___&amp;lt;pk&amp;gt;&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=left;" vertex="1" parent="1">
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-21" value="&lt;b&gt;&lt;u&gt;Folders&lt;/u&gt;&lt;/b&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;ul&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/intentions.json&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/data/&amp;lt;pk&amp;gt;.json&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/indices/&amp;lt;field&amp;gt;/&amp;lt;prefix&amp;gt;/&amp;lt;db&amp;gt;___&amp;lt;table&amp;gt;___&amp;lt;pk&amp;gt;&lt;/span&gt;&lt;/li&gt;&lt;li&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/commit&lt;/li&gt;&lt;li&gt;transactions/&amp;lt;timestamp8601&amp;gt;___&amp;lt;txid&amp;gt;/rollback&lt;/li&gt;&lt;/ul&gt;&lt;ul&gt;&lt;li&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/data/&amp;lt;pk&amp;gt;.json&lt;/span&gt;&lt;/li&gt;&lt;li&gt;&amp;lt;db&amp;gt;/&amp;lt;table&amp;gt;/indices/&amp;lt;field&amp;gt;/&amp;lt;prefix&amp;gt;/&amp;lt;db&amp;gt;___&amp;lt;table&amp;gt;___&amp;lt;pk&amp;gt;&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=left;" vertex="1" parent="1">
           <mxGeometry x="-490" y="473.75" width="620" height="206.25" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-23" value="Write object file&lt;div&gt;in transaction folder&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
@@ -96,14 +99,11 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="8gTCPd0678HFJd0iT-Pa-25" value="Writes object file to transaction folder.&lt;div&gt;&lt;div&gt;&lt;b&gt;Alternative 1a: &lt;/b&gt;insert:&amp;nbsp;Fails if object exists (see Process M below; if it exists, someone else beat us to it&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;)&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;b&gt;Alternative 1b: &lt;/b&gt;upsert: no failure if already exists, so long as the ETag is good. If no Etag is provided by the caller, treat it as an insert.&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;b&gt;Alternative 1c:&lt;/b&gt;&amp;nbsp;update will fail if ETag doesn&#39;t match&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;b&gt;Alternative 1d: &lt;/b&gt;delete will fail if ETag doesn&#39;t match&lt;/span&gt;&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
-          <mxGeometry x="252" y="1206" width="328" height="53" as="geometry" />
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-25" value="Writes object file to transaction folder.&lt;div&gt;&lt;div&gt;&lt;b&gt;Alternative 1a: &lt;/b&gt;insert:&amp;nbsp;Fails if object exists (see Process M below; if it exists, someone else beat us to it&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;)&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;b&gt;Alternative 1b: &lt;/b&gt;upsert: no failure if already exists, so long as the ETag matches existing. If no Etag is provided by the caller, treat it as an insert.&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;b&gt;Alternative 1c:&lt;/b&gt;&amp;nbsp;update will fail if ETag doesn&#39;t match&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;b&gt;Alternative 1d: &lt;/b&gt;delete will fail if ETag doesn&#39;t match&lt;/span&gt;&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="252" y="1166" width="328" height="126" as="geometry" />
         </mxCell>
-        <mxCell id="8gTCPd0678HFJd0iT-Pa-27" value="Write index files" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-27" value="Write index files&lt;div&gt;in transaction folder&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
           <mxGeometry x="591" y="1125" width="159" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="8gTCPd0678HFJd0iT-Pa-28" value="Write index files&lt;div&gt;in transaction folder&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
-          <mxGeometry x="598" y="1128" width="159" height="40" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-29" value="See above" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
           <mxGeometry x="-221" y="1179" width="109" height="30" as="geometry" />
@@ -142,7 +142,7 @@
           <mxGeometry x="-210" y="1470" width="270" height="51.5" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-66" value="1) Draw picture of what happens if a COMMITTED transaction needs to be recovered after a timeout" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
-          <mxGeometry x="-386" y="3130" width="290" height="85" as="geometry" />
+          <mxGeometry x="-112" y="3400" width="290" height="85" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-67" value="Any technical failure during this process, e.g. unable to write, causes a rollback" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
           <mxGeometry x="-72" y="1262" width="200" height="86" as="geometry" />
@@ -153,7 +153,7 @@
             <mxPoint x="780" y="1315" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="8gTCPd0678HFJd0iT-Pa-70" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-69" target="8gTCPd0678HFJd0iT-Pa-19">
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-70" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-209" target="8gTCPd0678HFJd0iT-Pa-19">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-69" value="&lt;span style=&quot;text-align: left;&quot;&gt;intentions.json is used&amp;nbsp;&lt;/span&gt;to reduce the amount of time that a concurrent transaction like Process M can write before Process 1 does, thereby locking objects and index entries in preparation for a commit.&amp;nbsp;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
@@ -207,8 +207,10 @@
         <mxCell id="8gTCPd0678HFJd0iT-Pa-85" value="Commit" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" vertex="1" parent="1">
           <mxGeometry x="757" y="2152" width="93" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="8gTCPd0678HFJd0iT-Pa-163" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-87" target="8gTCPd0678HFJd0iT-Pa-159">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-163" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-206" target="8gTCPd0678HFJd0iT-Pa-159">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1060" y="2530" as="sourcePoint" />
+          </mxGeometry>
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-87" value="Rollback" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
           <mxGeometry x="757" y="2526" width="93" height="40" as="geometry" />
@@ -280,10 +282,10 @@
           <mxGeometry x="-219" y="760" width="139" height="40" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-114" value="Recovery" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" vertex="1" parent="1">
-          <mxGeometry x="-184" y="3030" width="740" height="40" as="geometry" />
+          <mxGeometry x="-170" y="2983" width="1650" height="40" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-115" value="2) Describe the recovery process, used if a transaction is found that is out of date, either by the pod that started it, or a different pod that is doing background maintenance. WHEN THE TX IS NOT COMMITTED" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
-          <mxGeometry x="-30" y="3090" width="286" height="100" as="geometry" />
+          <mxGeometry x="232.13" y="3400" width="286" height="100" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-116" value="Read" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" vertex="1" parent="1">
           <mxGeometry x="-120" y="1592.5" width="656" height="40" as="geometry" />
@@ -409,7 +411,113 @@
           <mxGeometry x="-468" y="1767" width="290" height="70" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-171" value="Recovery" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=5;fontSize=20;" vertex="1" parent="1">
-          <mxGeometry x="-417" y="3010" width="219" height="30" as="geometry" />
+          <mxGeometry x="-403" y="2963" width="219" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-174" value="Start&lt;div&gt;Transaction&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="-172" y="3023" width="98" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-175" value="Commit" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="760" y="3023" width="93" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-176" value="Rollback" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="760" y="3870" width="93" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-177" value="This diagram describes what happens if the process that starts a transaction dies.&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;It describes what happens after the configured timeout.&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="-401" y="3043" width="171" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-180" value="If you are the first one to try and write, that doesn&#39;t mean it will work, we need to check if the ID is reserved, but also if the ETag they are providing is the latest. if not, optimistic lock exception!" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-450" y="1240" width="295" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-183" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-181" target="8gTCPd0678HFJd0iT-Pa-182">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-181" value="&lt;div&gt;&lt;a href=&quot;https://learning-notes.mistermicheels.com/data/sql/optimistic-pessimistic-locking-sql/&quot;&gt;Optimistic Locking&lt;/a&gt;&lt;/div&gt;&lt;div&gt;UPDATE &lt;i&gt;table&lt;/i&gt;&lt;/div&gt;&lt;div&gt;SET &lt;i&gt;field&lt;/i&gt; = &#39;f&#39;,&lt;/div&gt;&lt;div&gt;&amp;nbsp; &amp;nbsp; version = version + 1&lt;/div&gt;&lt;div&gt;WHERE id = 1 AND version = 1&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;If update count is not 1, rollback.&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;Note: this statement locks the row when the isolation level is higher than READ UNCOMMITTED, and we are trying to achieve that.&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=7;verticalAlign=top;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="1005" width="200" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-182" value="So with two concurrent transactions that start with the same version,&amp;nbsp;the first that executes the update statement will lock the row. That causes the second one to always fail as it cannot commit before the first transaction either completes or rolls back.&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;Now assume that the goal of every transaction is to &lt;i&gt;not&lt;/i&gt;&amp;nbsp;rollback. Every second transaction will fail, if the first does not rollback. So we assume it will fail and abort fast, using an optimistic lock exception to signal that in all likelihood, that second transaction will fail.&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;We don&#39;t use blocking to cause the caller to wait, rather let the caller decide when to retry. With knowledge of the transaction which has locked the key, we can inform the user about when the latest time is that the key will be writable.&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="950" y="1214" width="370" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-185" value="&lt;span style=&quot;&quot;&gt;The framework will remove the transaction folder, effectively rolling back any changes.&lt;/span&gt;&lt;div style=&quot;&quot;&gt;Other processes that have failed because they start after this transaction but need to write an object with a key that is reserved, will have to wait until this happens.&lt;/div&gt;" style="shape=partialRectangle;whiteSpace=wrap;html=1;right=0;top=0;bottom=0;fillColor=none;routingCenterX=-0.5;align=left;verticalAlign=bottom;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="-167.5" y="3090" width="330" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-186" value="&lt;div style=&quot;&quot;&gt;Once the commit file is written, the transaction will be completed. Until that happens, the locks will exist.&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;If the process running the original transaction fails to do this, but doesn&#39;t die, it will keep trying and will use the callback to alert the application of the problem, e.g. a lack of storage space or connectivity problems.&lt;/div&gt;&lt;div style=&quot;&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;&quot;&gt;If the process running the original transaction dies, other processes will take over and try to complete the transaction by moving the files to the final location. If they fail, they too will keep trying and alert the application.&lt;/div&gt;" style="shape=partialRectangle;whiteSpace=wrap;html=1;right=0;top=0;bottom=0;fillColor=none;routingCenterX=-0.5;align=left;verticalAlign=bottom;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="849" y="3096" width="330" height="204" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-187" value="Copy all objects in Transaction&lt;div&gt;to target folders&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="963" y="3023" width="280" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-188" value="Delete transaction folder" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1233" y="3023" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-189" value="" style="ellipse;html=1;shape=endState;fillColor=strokeColor;" vertex="1" parent="1">
+          <mxGeometry x="1453" y="3028" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-190" value="Write commit file&lt;div&gt;in TX folder&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="847" y="3023" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-191" value="Complete" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="1483" y="3027.5" width="67" height="29.5" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-192" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=-0.004;entryY=0.059;entryDx=0;entryDy=0;entryPerimeter=0;exitX=-0.001;exitY=0.177;exitDx=0;exitDy=0;exitPerimeter=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-185" target="8gTCPd0678HFJd0iT-Pa-186">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="499" y="3108" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-193" value="add alert handling to lib" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="561" y="3440" width="169" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-194" value="From here on (to the right) other processes will start to see the results of the transaction. E.g. they might be able to read an object using its key, but not yet using an index.&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;Any process that is recovering and completing the transaction will be able to simply upsert the object, because the lock is still held by the transaction and so it can assume that it has the right to update to the state that is recorded in the transaction.&lt;/div&gt;" style="shape=partialRectangle;whiteSpace=wrap;html=1;right=0;top=0;bottom=0;fillColor=none;routingCenterX=-0.5;align=left;verticalAlign=bottom;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="973.5" y="3300" width="246.5" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-195" value="all moves should be executed in parallel to speed up the execution and minimise the inconsistency window." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1017.25" y="3620" width="169.5" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-196" value="From here on (to the right) the transaction is effectively committed and the framework simply needs to remove the outdated transaction files." style="shape=partialRectangle;whiteSpace=wrap;html=1;right=0;top=0;bottom=0;fillColor=none;routingCenterX=-0.5;align=left;verticalAlign=bottom;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="1225" y="3302" width="246.5" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-197" value="check the logic here. i wrote somewhere else that ETags will be respected, but here i don&#39;t give a damn.&amp;nbsp;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;if someone else did manage to update, and used a different etag that&#39;d be shite.&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="920" y="3500" width="327.75" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-198" value="do processes that are recovering, need to write a lock file to say that they are doing so? if they dont then the etag will be updated and another recoverer will get errors and be very confused.&amp;nbsp;&amp;nbsp;&lt;div&gt;perhaps instead of using etags they should just read and check all bytes are the same?&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="909.25" y="3740" width="327.75" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-199" value="Delete transaction folder" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1237" y="3870" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-200" value="" style="ellipse;html=1;shape=endState;fillColor=strokeColor;" vertex="1" parent="1">
+          <mxGeometry x="1457" y="3875" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-201" value="Complete" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="1487" y="3874.5" width="67" height="29.5" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-202" value="&lt;div&gt;Once the rollback file is written, the transaction will be rolled back. Until that happens, the locks will exist.&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;From here on to the right:&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;If the process running the original transaction fails to delete the transaction folder, but doesn&#39;t die, it will keep trying and will use the callback to alert the application of the problem, e.g. connectivity problems.&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;If the process running the original transaction dies, other processes will take over and try to rollback the transaction by deleting the transaction folder. If they fail, they too will keep trying and alert the application.&lt;/div&gt;" style="shape=partialRectangle;whiteSpace=wrap;html=1;right=0;top=0;bottom=0;fillColor=none;routingCenterX=-0.5;align=left;verticalAlign=bottom;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="950" y="3920" width="540" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-205" value="Migrations - when starting, read the version file to see what version is &quot;deployed&quot; and if it is lower than a file in the migrations folder of the app, then write a lock file with the hostname using an etag to ensure it is only written if not previously there (ensuring only one pod will do the migration), then migrate and write the version file and remove the lock file.&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;any process which attempts to lock and fails should iterate with a backoff strategy until the migration is complete.&amp;nbsp;&amp;nbsp;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;all processes must block on this migration process, stopping the application from starting until the migration is complete.&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-880" y="2048.5" width="310" height="241.5" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-206" value="Write rollback file&lt;div&gt;in TX folder&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="840" y="2526" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-207" value="Write rollback file&lt;div&gt;in TX folder&lt;/div&gt;" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="843" y="3870" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-208" value="we could optimise this and as soon as any rollback file exists, any running process can try to delete it. That way, locks will be removed asap, rather than waiting for a timeout." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="4130" width="220" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-210" value="" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-69" target="8gTCPd0678HFJd0iT-Pa-209">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="295" y="668" as="sourcePoint" />
+            <mxPoint x="162" y="1125" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-209" value="if writing the intentions.json file fails due to an etag failure, then the call to CUD will re-read it and re-merge the current CUD and try and re-write the file. this allows for the process to do stuff concurrently.&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;IS THIS GOOD? yes, if we document that it would&#39;t be a good idea to attempt to update the same object from multiple &quot;threads&quot;, as the last one will win. ONLY use concurrent CUDs if they affect different keys.&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="95.88000000000011" y="765" width="243" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-211" value="Failure to create the rollback file will lead to a timeout, as documented to the left and up." style="shape=partialRectangle;whiteSpace=wrap;html=1;right=0;top=0;bottom=0;fillColor=none;routingCenterX=-0.5;align=left;verticalAlign=bottom;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="843" y="3920" width="97" height="100" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
