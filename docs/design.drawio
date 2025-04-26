@@ -549,6 +549,24 @@
         <mxCell id="8gTCPd0678HFJd0iT-Pa-221" value="Is that last point true? they could check to see if we have an intention in an open transaction that caused that write and if so, read a previous version." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
           <mxGeometry x="556" y="290" width="260" height="140" as="geometry" />
         </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-222" value="&lt;div&gt;What happens if a second transaction reads the list of transaction steps which doesn&#39;t contain a given key, so it thinks awesome&lt;/div&gt;&lt;div&gt;i can write that. Then the first transaction inserts or updates that key before the second transaction can write its transaction steps to reserve that key? Or indeed the other way around.&amp;nbsp;Well, one of the two transactions will get a conflict&amp;nbsp;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;from minio. so while locking is partially useful, we still rely on ETags in order to ensure consistency.&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="468.5" y="780" width="243" height="185" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-223" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-222" target="8gTCPd0678HFJd0iT-Pa-23">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="204" y="985" as="sourcePoint" />
+            <mxPoint x="171" y="1135" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-224" value="Skip this because ETags will suffice?" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-72" y="875" width="115" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-225" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-224" target="8gTCPd0678HFJd0iT-Pa-75">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="204" y="985" as="sourcePoint" />
+            <mxPoint x="171" y="1135" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>

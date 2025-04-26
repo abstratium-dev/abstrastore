@@ -109,13 +109,17 @@ type DatabaseTableIdTuple struct {
 
 type Transaction struct {
 	Id string `json:"id"`
+	Etag string `json:"etag"`
 	StartNanoseconds int64 `json:"startNs"`
+	Steps []*TransactionStep `json:"steps"`
 }
 
 func NewTransaction(timeout time.Duration) Transaction {
 	return Transaction{
 		Id: uuid.New().String(), 
+		Etag: "*",
 		StartNanoseconds: time.Now().Add(timeout).UnixNano(),
+		Steps: make([]*TransactionStep, 0, 10),
 	}
 }
 
@@ -127,3 +131,14 @@ func (t *Transaction) GetPath() string {
 	return fmt.Sprintf("transactions/%d___%s", t.StartNanoseconds, t.Id)
 }
 
+// information that is required in order to rollback a transaction
+type TransactionStep struct {
+	Id string `json:"id"` // used to identify the object which needs to be deleted, if we were not able to update the transaction and a rollback were necessary
+	Type string `json:"type"`
+	Path string `json:"path"`
+	InitialETag string `json:"initialEtag"`
+	FinalETag string `json:"finalEtag"`
+	FinalVersionId string `json:"finalVersionId"`
+	ContentType string `json:"contentType"`
+	Data []byte `json:"-"`
+}

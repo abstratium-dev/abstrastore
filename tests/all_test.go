@@ -57,7 +57,17 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Account Including Indices", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), T_ACCOUNT, account1)
+		tx, err := repo.StartTransaction(context.Background(), 10*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		
+		err = repo.InsertIntoTable(context.Background(), &tx, T_ACCOUNT, account1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		panic("TODO fix all of the tests in this file, with regards to transactions")
+		err = repo.Commit(context.Background(), &tx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +102,12 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Issue", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), T_ISSUE, issue1)
+		tx, err := repo.StartTransaction(context.Background(), 10*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = repo.InsertIntoTable(context.Background(), &tx, T_ISSUE, issue1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -125,7 +140,12 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Watch", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), T_WATCH, watch1_account1_issue1)
+		tx, err := repo.StartTransaction(context.Background(), 10*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = repo.InsertIntoTable(context.Background(), &tx, T_WATCH, watch1_account1_issue1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,7 +192,7 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Second Account", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), T_ACCOUNT, account2)
+		err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_ACCOUNT, account2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -188,7 +208,7 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Second Issue", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), T_ISSUE, issue2)
+		err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_ISSUE, issue2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -209,13 +229,13 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Second and Third Watch", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), T_WATCH, watch2_account2_issue2)
+		err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_WATCH, watch2_account2_issue2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		log.Println("added watch at ", T_WATCH.Path(watch2_account2_issue2.Id))
 
-		err = repo.InsertIntoTable(context.Background(), T_WATCH, watch3_account1_issue2)
+		err = repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_WATCH, watch3_account1_issue2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -344,7 +364,7 @@ func TestAll(t *testing.T) {
 	})
 
 	t.Run("Insert Duplicate Account", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), T_ACCOUNT, account1)
+		err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_ACCOUNT, account1)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -363,14 +383,18 @@ func TestAll(t *testing.T) {
 	assert.Fail("TODO add full table scan reading based on list objects and an index of a field")
 }
 
+var repo *min.MinioRepository
 func getRepo() *min.MinioRepository {
-	os.Setenv("MINIO_URL", "127.0.0.1:9000")
-	os.Setenv("MINIO_ACCESS_KEY_ID", "rootuser")
-	os.Setenv("MINIO_SECRET_ACCESS_KEY", "rootpass")
-	os.Setenv("MINIO_BUCKET_NAME", "abstrastore-tests")
-	os.Setenv("MINIO_USE_SSL", "false")
-	min.Setup()
-	return min.GetRepository()
+	if repo == nil {
+		os.Setenv("MINIO_URL", "127.0.0.1:9000")
+		os.Setenv("MINIO_ACCESS_KEY_ID", "rootuser")
+		os.Setenv("MINIO_SECRET_ACCESS_KEY", "rootpass")
+		os.Setenv("MINIO_BUCKET_NAME", "abstrastore-tests")
+		os.Setenv("MINIO_USE_SSL", "false")
+		min.Setup()
+		repo = min.GetRepository()
+	}
+	return repo
 }
 
 type Account struct {

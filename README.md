@@ -111,7 +111,20 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 
 ## TODO
 
+- document limitations from https://min.io/docs/minio/linux/operations/concepts/thresholds.html, e.g. field value in index may not be too long
 - rename to abstraDB?
+- how do we delete old indices efficiently? 
+  - they are in a path like this: abstrastore-tests/transactions-tests/account/indices/Name/jo/john doe/transactions-tests___account___36ce5121-1a22-4101-b34f-b7063511c0f9
+  - we need to perhaps store them with the actual object when it is created and updated?
+- add update
+- add delete
+- add upsert
+- add read
+- add all CRUD stuff to transaction cache, so that its repeatable read
+- use UserMetadata more, since we get it when listing objects, not just reading objects
+- range index search, e.g. more than or between, rather than exact matches
+- index search with regex
+- explain that we use the index prefix of two letters so that you can do autocomplete searches
 - make interface have insert, upsert, update. insert and update fail if the object exists, or doesn't exist respectively.
 - document using etags when updating
 - think of scenarios which are not covered by the current implementation and document them
@@ -121,5 +134,6 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 - do load and performance tests
 - add using https://pkg.go.dev/about#adding-a-package
 - sql parsing - https://github.com/xwb1989/sqlparser
+- put internal structs into internal package
 - make cleaning up old versions configurable in order to support auditing requirements
 
