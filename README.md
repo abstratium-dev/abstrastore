@@ -107,7 +107,7 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 - Eventual consistency Wikipedia: https://en.wikipedia.org/wiki/Eventual_consistency
 - Eventually Consistent by Werner Vogels (2009): https://dl.acm.org/doi/pdf/10.1145/1435417.1435432
 - Notes on distributed databases (1979): https://dominoweb.draco.res.ibm.com/reports/RJ2571.pdf
-
+- Nice article on MVCC in MySql: https://www.red-gate.com/simple-talk/databases/mysql/exploring-mvcc-and-innodbs-multi-versioning-technique/
 
 ## TODO
 

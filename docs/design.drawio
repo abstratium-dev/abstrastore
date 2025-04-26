@@ -1,6 +1,6 @@
 <mxfile host="draw.maxant.ch" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36" version="26.0.7">
   <diagram name="Page-1" id="Zd5h04fM4v0t592Zn4om">
-    <mxGraphModel dx="3649" dy="1477" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="3034" dy="1154" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -123,8 +123,8 @@
         <mxCell id="8gTCPd0678HFJd0iT-Pa-51" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-50" target="8gTCPd0678HFJd0iT-Pa-21">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="8gTCPd0678HFJd0iT-Pa-50" value="Timestamp in ISO-8601 format is used in transaction to know when one has timed out and needs deleting" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
-          <mxGeometry x="-530" y="380" width="290" height="60" as="geometry" />
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-50" value="Timestamp in ISO-8601 format is used in transaction to know when one has timed out and needs deleting.&lt;div&gt;The timestamp is that of when the transaction will timeout, so that transactions of different lengths can be started.&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=8;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="-580" y="360" width="330" height="90" as="geometry" />
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-52" value="Commit" style="shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
           <mxGeometry x="757" y="1125" width="93" height="40" as="geometry" />
@@ -530,6 +530,24 @@
         </mxCell>
         <mxCell id="8gTCPd0678HFJd0iT-Pa-215" value="See &lt;a href=&quot;https://en.wikipedia.org/wiki/Multiversion_concurrency_control&quot;&gt;https://en.wikipedia.org/wiki/Multiversion_concurrency_control&lt;/a&gt;: &quot;A Write cannot complete if there are other outstanding transactions with an earlier Read Timestamp (RTS) to the same object&quot;." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
           <mxGeometry x="950" y="1450" width="370" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-216" value="Why do we write data temporarily to the transaction folder, rather than just writing new versions of files?&amp;nbsp; After all, when we read, we always check that the version being read is older than the transaction start time, in order to get consistent and repeatable reads.&amp;nbsp;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;writing to the tx folder means we then later need to copy from there to the final destination, and that causes an inconsistency window...&lt;br&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;Hmm that could actually work...&lt;/b&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;&lt;br&gt;&lt;/b&gt;&lt;/div&gt;&lt;div&gt;no, it won&#39;t imagine we write a new version of a file. then a second transaction writes its version. when reading, we must NOT read from the filesystem, because we wouldn&#39;t know what version belongs to us. well, actually we could, since we could store that in memory.&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;Ah but transactions starting after us, will then read data that hasn&#39;t been committed! No they won&#39;t, they are blocked!. No, not true, blocking only occurs when &lt;i&gt;writing&lt;/i&gt;. So they will see data that is not yet committed. But the framework can check all open transactions to determine if the key is locked and if it is, it can find the relevant older version and use that instead, thus avoiding reading data that is not yet committed.&amp;nbsp; because we do lock-on-write, we know that no other transaction could write data in the mean time and that the transaction with the lock will be the next one to write.&lt;br&gt;&lt;br&gt;but what happens if we read the tx data and determine that the object we want to read is not yet committed. so we go and read an older version, during that time, that other transaction actually commits the data. so our read is stale. we might make a decision based on the stale data and then write some entirely other data based on that, which is wrong. ok, but that could happen with any database, if a commit in the mean time means your decision is wrong, you can hardly fix that without locking stuff so that no one else can commit until you are done.&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;b&gt;ok, let&#39;s try it and not bother writing data and indices to the tx folder, in order to reduce the inconsistency window to zero.&lt;/b&gt;&lt;/div&gt;" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-180" y="260" width="810" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-217" value="Mitigate old indexes by reading the data in the required version and checking it actually matches what is being searched for. So multiple index entries can exist but they aren&#39;t necessarily correct at that second. Mitigates reading while indexes are being updated, so fixes inconsistency window" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=8;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="-670" y="250" width="350" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-218" value="By only reading versions created before the tx starts, we can actually also avoid phantom reads (objects inserted by other transactions, after this transaction started). In theory, that makes the isolation level serialisable, but if that doesn&#39;t negatively impact performance or locking, who cares?" style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;" vertex="1" parent="1">
+          <mxGeometry x="400" y="1910" width="270" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-220" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;endArrow=none;startFill=0;" edge="1" parent="1" source="8gTCPd0678HFJd0iT-Pa-219" target="8gTCPd0678HFJd0iT-Pa-218">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-219" value="Need to mention this in the docs." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="566" y="1840" width="270" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8gTCPd0678HFJd0iT-Pa-221" value="Is that last point true? they could check to see if we have an intention in an open transaction that caused that write and if so, read a previous version." style="shape=note2;boundedLbl=1;whiteSpace=wrap;html=1;size=15;verticalAlign=top;align=center;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="556" y="290" width="260" height="140" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
