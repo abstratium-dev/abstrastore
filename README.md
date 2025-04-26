@@ -111,6 +111,7 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 
 ## TODO
 
+- rename to abstraDB?
 - make interface have insert, upsert, update. insert and update fail if the object exists, or doesn't exist respectively.
 - document using etags when updating
 - think of scenarios which are not covered by the current implementation and document them

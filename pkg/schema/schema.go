@@ -3,6 +3,9 @@ package schema
 import (
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 type Database string
@@ -21,10 +24,12 @@ func (t *Table) pathPrefix() string {
 	return fmt.Sprintf("%s/%s/data", t.Database, t.Name)
 }
 
+// full path to the object with the given id
 func (t *Table) Path(id string) string {
 	return fmt.Sprintf("%s/%s.json", t.pathPrefix(), id)
 }
 
+// return the index object for the given field name
 func (t *Table) GetIndex(field string) (*Index, error) {
 	for _, index := range t.Indices {
 		if index.Field == field {
@@ -101,3 +106,24 @@ type DatabaseTableIdTuple struct {
 	Table    string
 	Id       string
 }
+
+type Transaction struct {
+	Id string `json:"id"`
+	StartNanoseconds int64 `json:"startNs"`
+}
+
+func NewTransaction(timeout time.Duration) Transaction {
+	return Transaction{
+		Id: uuid.New().String(), 
+		StartNanoseconds: time.Now().Add(timeout).UnixNano(),
+	}
+}
+
+func (t *Transaction) IsExpired() bool {
+	return time.Now().UnixNano() > t.StartNanoseconds
+}
+
+func (t *Transaction) GetPath() string {
+	return fmt.Sprintf("transactions/%d___%s", t.StartNanoseconds, t.Id)
+}
+

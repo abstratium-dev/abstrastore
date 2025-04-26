@@ -53,11 +53,3 @@ func TestExploration(t *testing.T) {
 		fmt.Println(object.LastModified.Format(time.RFC3339) + " -> " + object.VersionID)
 	}
 }
-
-ok use versions for mvcc
-
-any time we read, and determine that there is more than one version, and older versions are older than the configured time,
-we can delete them, since they are garbage and no longer necessary for read isolation.
-
-
-

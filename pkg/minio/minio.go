@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/abstratium-informatique-sarl/abstrastore/internal/util"
 	"github.com/abstratium-informatique-sarl/abstrastore/pkg/schema"
@@ -48,13 +51,22 @@ func Setup() {
 	}
 
 	repo = newMinioRepository(client, bucketName)
+
+	// ensure versioning is enabled
+	versioningConfig, err := repo.Client.GetBucketVersioning(context.Background(), repo.BucketName)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to get bucket versioning configuration: %v", err))
+	}
+	if !versioningConfig.Enabled() {
+		panic("Versioning is not enabled for the bucket")
+	}
 }
 
 func newMinioRepository(client *minio.Client, bucketName string) *MinioRepository {
-    return &MinioRepository{
-        Client:     client,
-        BucketName: bucketName,
-    }
+	return &MinioRepository{
+		Client:     client,
+		BucketName: bucketName,
+	}
 }
 
 func GetRepository() *MinioRepository {
@@ -78,9 +90,9 @@ func (e *NoSuchKeyError) Error() string {
 }
 
 type TypedQuery[T any] struct {
-	ctx    context.Context
+	ctx      context.Context
 	template *T
-	repo *MinioRepository
+	repo     *MinioRepository
 }
 
 // Param: repo - the repository to use
@@ -89,15 +101,15 @@ type TypedQuery[T any] struct {
 // Returns: a new TypedQuery[T] instance
 func NewTypedQuery[T any](repo *MinioRepository, ctx context.Context, template *T) TypedQuery[T] {
 	return TypedQuery[T]{
-		ctx: ctx,
+		ctx:      ctx,
 		template: template,
-		repo: repo,
+		repo:     repo,
 	}
 }
 
 type ContextContainer[T any] struct {
-	ctx   context.Context
-	repo  *MinioRepository
+	ctx      context.Context
+	repo     *MinioRepository
 	template *T
 }
 
@@ -106,9 +118,9 @@ func (c TypedQuery[T]) SelectFromTable(table schema.Table) WhereContainer[T] {
 }
 
 type WhereContainer[T any] struct {
-	ctx   context.Context
-	repo  *MinioRepository
-	table schema.Table
+	ctx      context.Context
+	repo     *MinioRepository
+	table    schema.Table
 	template *T
 }
 
@@ -121,12 +133,12 @@ func (w WhereContainer[T]) WhereIdEquals(id string) FindByIdContainer[T] {
 }
 
 type FindByIndexedFieldContainer[T any] struct {
-	ctx   context.Context
-	repo *MinioRepository
-	table schema.Table
+	ctx      context.Context
+	repo     *MinioRepository
+	table    schema.Table
 	template *T
-	field string
-	value string
+	field    string
+	value    string
 }
 
 // sql: select * from table_name where column1 = value1 (column1 is in an index)
@@ -159,7 +171,7 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) error {
 				return
 			}
 			defer recordData.Close()
-			
+
 			// parse the actual record
 			b, err := io.ReadAll(recordData)
 			if err != nil {
@@ -205,13 +217,12 @@ func (f FindByIndexedFieldContainer[T]) FindIds(destination *[]schema.DatabaseTa
 	return nil
 }
 
-
 type FindByIdContainer[T any] struct {
-	ctx   context.Context
-	repo *MinioRepository
-	table schema.Table
+	ctx      context.Context
+	repo     *MinioRepository
+	table    schema.Table
 	template *T
-	id string
+	id       string
 }
 
 // sql: select * from table_name where id = value1
@@ -299,9 +310,9 @@ func (r *MinioRepository) insertIntoIndex(ctx context.Context, index schema.Inde
 		panic("TODO")
 	}
 	/*
-TODO what about idempotence, which is our strategy for recovery. => silently ignore existing index entries, since they are correct if they exist
-let the user decide if they want to upsert -> provide a different method for that.
-*/
+		TODO what about idempotence, which is our strategy for recovery. => silently ignore existing index entries, since they are correct if they exist
+		let the user decide if they want to upsert -> provide a different method for that.
+	*/
 	opts := minio.PutObjectOptions{
 		ContentType: "text/plain",
 	}
@@ -338,7 +349,7 @@ func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx contex
 	go func() {
 		defer close(objectsCh) // Close the channel when listing is done
 		listOpts := minio.ListObjectsOptions{
-			Prefix:    indexPath, // default is non-recursive
+			Prefix: indexPath, // default is non-recursive
 		}
 		for object := range r.Client.ListObjects(ctx, r.BucketName, listOpts) {
 			if object.Err != nil {
@@ -390,4 +401,173 @@ func getFieldValueAsString(obj interface{}, fieldName string) (string, error) {
 	}
 
 	return field.Interface().(string), nil
+}
+
+func ReadObjectVersionOlderThanTimestamp(ctx context.Context, table schema.Table, id string, timestamp time.Time) (*[]byte, error) {
+	objects := repo.Client.ListObjects(ctx, repo.BucketName, minio.ListObjectsOptions{
+		Prefix:       table.Path(id), // full path of object we are reading
+		WithVersions: true,           // get version info so that we can find the object with a timestamp before the transaction started
+	})
+	var objectsList []minio.ObjectInfo
+	for object := range objects {
+		if object.Err != nil {
+			return nil, object.Err
+		}
+		objectsList = append(objectsList, object)
+	}
+	slices.SortFunc(objectsList, func(a, b minio.ObjectInfo) int {
+		return b.LastModified.Compare(a.LastModified) // oldest first
+	})
+	versionToRead := ""
+	for _, object := range objectsList {
+		if object.Err != nil {
+			return nil, object.Err
+		}
+
+		if object.LastModified.Before(timestamp) {
+			versionToRead = object.VersionID
+			break
+		}
+	}
+
+	if versionToRead == "" {
+		return nil, &NoSuchKeyError{Details: fmt.Sprintf("object %s does not exist", table.Path(id))}
+	}
+
+	// read the object
+	objectData, err := repo.Client.GetObject(ctx, repo.BucketName, table.Path(id), minio.GetObjectOptions{
+		VersionID: versionToRead,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer objectData.Close()
+
+	// parse the actual record
+	b, err := io.ReadAll(objectData)
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
+func (r *MinioRepository) StartTransaction(ctx context.Context, timeout time.Duration) (schema.Transaction, error) {
+	tx := schema.NewTransaction(timeout)
+	json, err := json.Marshal(tx)
+	if err != nil {
+		return tx, err
+	}
+	opts := minio.PutObjectOptions{
+		ContentType: "application/json",
+	}
+	opts.SetMatchETagExcept("*") // fail if the object already exists
+	_, err = r.Client.PutObject(ctx, r.BucketName, tx.GetPath()+"/tx.json", bytes.NewReader(json), int64(len(json)), opts)
+	if err != nil {
+		respErr := minio.ToErrorResponse(err)
+		if respErr.StatusCode == http.StatusPreconditionFailed {
+			return tx, &DuplicateKeyError{Details: fmt.Sprintf("transaction %s already exists", tx.Id)}
+		} else {
+			return tx, fmt.Errorf("failed to put transaction %s: %w", tx.Id, err)
+		}
+	}
+	return tx, nil
+}
+
+func (r *MinioRepository) GetOpenTransactions(ctx context.Context, transactions *[]schema.Transaction) error {
+	// read all objects in the transactions folder
+	objectCh := r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
+		Prefix:    "transactions/",
+		Recursive: false,
+	})
+	for object := range objectCh {
+		if object.Err != nil {
+			return object.Err
+		}
+
+		// read the actual tx
+		txData, err := r.Client.GetObject(ctx, r.BucketName, object.Key+"tx.json", minio.GetObjectOptions{})
+		if err != nil {
+			return err
+		}
+		defer txData.Close()
+
+		// parse the actual record
+		b, err := io.ReadAll(txData)
+		if err != nil {
+			return err
+		}
+		var transaction = &schema.Transaction{}
+		if err := json.Unmarshal(b, &transaction); err != nil {
+			return err
+		}
+		*transactions = append(*transactions, *transaction)
+	}
+	return nil
+}
+
+func (r *MinioRepository) CommitTransaction(ctx context.Context, tx schema.Transaction) error {
+	// delete the transaction
+	governanceBypass := true // transactions are not subject to governance
+	if err := r.DeleteFolder(ctx, tx.GetPath(), governanceBypass, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *MinioRepository) RollbackTransaction(ctx context.Context, tx schema.Transaction) error {
+	panic("TODO")
+}
+
+func (r *MinioRepository) DeleteFolder(ctx context.Context, folderPrefix string, governanceBypass bool, deleteAllVersions bool) error {
+	// Ensure folderPrefix ends with a slash for proper folder deletion
+	if !strings.HasSuffix(folderPrefix, "/") {
+		folderPrefix = folderPrefix + "/"
+	}
+
+	// Channel to hold object names to be removed
+	objectsCh := make(chan minio.ObjectInfo)
+
+	// Goroutine to list objects and send them to the channel
+	go func() {
+		defer close(objectsCh) // Close the channel when listing is done
+		// ListObjectsOptions recursive defaults to false if not set.
+		// Set Recursive to true to find objects in sub-"folders".
+		listOpts := minio.ListObjectsOptions{
+			Prefix:    folderPrefix,
+			Recursive: true,
+			WithVersions: deleteAllVersions, // to get all versions of the objects and delete everything
+		}
+		for object := range r.Client.ListObjects(ctx, r.BucketName, listOpts) {
+			if object.Err != nil {
+				panic(object.Err)
+			} else {
+				objectsCh <- object
+			}
+		}
+	}() // End of goroutine
+
+	// --- Perform Bulk Deletion ---
+	// RemoveObjectsOptions can be adjusted if needed (e.g., for GovernanceBypass)
+	opts := minio.RemoveObjectsOptions{
+		GovernanceBypass: governanceBypass,
+	}
+
+	// RemoveObjects consumes the objects from the channel
+	errorCh := r.Client.RemoveObjects(ctx, r.BucketName, objectsCh, opts)
+
+	// --- Process Deletion Errors ---
+	errors := make([]minio.RemoveObjectError, 0, 10)
+	// Drain the error channel and log any errors
+	for e := range errorCh {
+		errors = append(errors, e)
+	}
+
+	if len(errors) > 0 {
+		errorString := ""
+		for _, e := range errors {
+			errorString += e.Err.Error() + "\n"
+		}
+		return fmt.Errorf("Finished deletion process with %d errors. All errors were:\n%s", len(errors), errorString)
+	}
+	return nil
 }
