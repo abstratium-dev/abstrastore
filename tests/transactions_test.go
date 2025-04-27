@@ -121,6 +121,13 @@ func TestTransactions_StartTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
+
 	time.Sleep(1 * time.Millisecond)
 	
 	assert.True(tx.IsExpired())
