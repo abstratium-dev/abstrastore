@@ -1,12 +1,16 @@
 package schema
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+const ROLLBACK_ID = "Rollbackid" // wow, minio doesn't support camel case
+const LAST_MODIFIED = "Lastmodified" // wow, minio doesn't support camel case
 
 type Database string
 
@@ -110,35 +114,106 @@ type DatabaseTableIdTuple struct {
 type Transaction struct {
 	Id string `json:"id"`
 	Etag string `json:"etag"`
-	StartNanoseconds int64 `json:"startNs"`
+	StartMicroseconds int64 `json:"startMicros"`
 	Steps []*TransactionStep `json:"steps"`
+	
+	// key is path to object; allows the transaction to avoid reading things that it wrote or already read (enabling repeatable reads)
+	Cache map[string]*any `json:"-"`
+
+	// Open, Committed, RolledBack
+	State string `json:"state"`
 }
 
 func NewTransaction(timeout time.Duration) Transaction {
 	return Transaction{
 		Id: uuid.New().String(), 
 		Etag: "*",
-		StartNanoseconds: time.Now().Add(timeout).UnixNano(),
+		StartMicroseconds: time.Now().Add(timeout).UnixMicro(),
 		Steps: make([]*TransactionStep, 0, 10),
+		Cache: make(map[string]*any),
+		State: "Open",
 	}
 }
 
 func (t *Transaction) IsExpired() bool {
-	return time.Now().UnixNano() > t.StartNanoseconds
+	return time.Now().UnixMicro() > t.StartMicroseconds
+}
+
+var TransactionAlreadyCommittedError = fmt.Errorf("Transaction is already committed")
+var TransactionAlreadyRolledBackError = fmt.Errorf("Transaction is already rolled back")
+var TransactionTimedOutError = fmt.Errorf("Transaction has timed out")
+
+func (t *Transaction) IsOk() error {
+	if t.State == "Committed" {
+		return TransactionAlreadyCommittedError
+	} else if t.State == "RolledBack" {
+		return TransactionAlreadyRolledBackError
+	} else if t.State != "Open" {
+		panic("Transaction is in an unknown state")
+	}
+
+	if t.IsExpired() {
+		return TransactionTimedOutError
+	}
+
+	return nil
 }
 
 func (t *Transaction) GetPath() string {
-	return fmt.Sprintf("transactions/%d___%s", t.StartNanoseconds, t.Id)
+	return fmt.Sprintf("transactions/%d___%s", t.StartMicroseconds, t.Id)
+}
+
+func (t *Transaction) AddStep(Type string, ContentType string, Path string, InitialETag string, Entity any) error {
+	if err := t.IsOk(); err != nil {
+		return err
+	}
+
+	userMetadata := map[string]string{
+		ROLLBACK_ID: t.Id,
+		LAST_MODIFIED: fmt.Sprintf("%d", time.Now().UnixMicro()),
+	}
+
+	data := []byte{}
+	if Entity != nil {
+		var err error
+		data, err = json.Marshal(Entity)
+		if err != nil {
+			return err
+		}
+	}
+
+	step := TransactionStep{
+		Type: Type,
+		ContentType: ContentType,
+		Path: Path,
+		InitialETag: InitialETag,
+		UserMetadata: userMetadata,
+		Data: &data,
+	}
+	t.Steps = append(t.Steps, &step)
+
+	if(Type == "insert-data") {
+		t.Cache[Path] = &Entity
+	} else if (Type == "insert-index") {
+		t.Cache[Path] = &Entity
+	}
+
+	return nil
 }
 
 // information that is required in order to rollback a transaction
 type TransactionStep struct {
-	Id string `json:"id"` // used to identify the object which needs to be deleted, if we were not able to update the transaction and a rollback were necessary
 	Type string `json:"type"`
+	ContentType string `json:"contentType"`
 	Path string `json:"path"`
 	InitialETag string `json:"initialEtag"`
+	UserMetadata map[string]string `json:"userMetadata"`
+	Data *[]byte `json:"-"`
 	FinalETag string `json:"finalEtag"`
 	FinalVersionId string `json:"finalVersionId"`
-	ContentType string `json:"contentType"`
-	Data []byte `json:"-"`
+}
+
+func (step *TransactionStep) SetFinalETagAndVersionId(finalETag string, finalVersionId string) {
+	step.FinalETag = finalETag
+	step.FinalVersionId = finalVersionId
 }

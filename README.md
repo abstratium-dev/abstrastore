@@ -122,6 +122,7 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 - add read
 - add all CRUD stuff to transaction cache, so that its repeatable read
 - use UserMetadata more, since we get it when listing objects, not just reading objects
+- if operation on tx is after timeout, then throw error
 - range index search, e.g. more than or between, rather than exact matches
 - index search with regex
 - explain that we use the index prefix of two letters so that you can do autocomplete searches

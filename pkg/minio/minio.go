@@ -17,12 +17,11 @@ import (
 
 	"github.com/abstratium-informatique-sarl/abstrastore/internal/util"
 	"github.com/abstratium-informatique-sarl/abstrastore/pkg/schema"
-	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-const ROLLBACK_ID = "rollbackId"
+const MINIO_META_PREFIX = "X-Amz-Meta-"
 
 var repo *MinioRepository
 
@@ -96,17 +95,20 @@ type TypedQuery[T any] struct {
 	ctx      context.Context
 	template *T
 	repo     *MinioRepository
+	tx       *schema.Transaction
 }
 
 // Param: repo - the repository to use
 // Param: ctx - the context to use
+// Param: transaction - the transaction to use
 // Param: template - the template of type T, used to unmarshal the JSON data
 // Returns: a new TypedQuery[T] instance
-func NewTypedQuery[T any](repo *MinioRepository, ctx context.Context, template *T) TypedQuery[T] {
+func NewTypedQuery[T any](repo *MinioRepository, ctx context.Context, transaction *schema.Transaction, template *T) TypedQuery[T] {
 	return TypedQuery[T]{
 		ctx:      ctx,
 		template: template,
 		repo:     repo,
+		tx:       transaction,
 	}
 }
 
@@ -114,10 +116,11 @@ type ContextContainer[T any] struct {
 	ctx      context.Context
 	repo     *MinioRepository
 	template *T
+	tx       *schema.Transaction
 }
 
 func (c TypedQuery[T]) SelectFromTable(table schema.Table) WhereContainer[T] {
-	return WhereContainer[T]{c.ctx, c.repo, table, c.template}
+	return WhereContainer[T]{c.ctx, c.repo, table, c.template, c.tx}
 }
 
 type WhereContainer[T any] struct {
@@ -125,14 +128,15 @@ type WhereContainer[T any] struct {
 	repo     *MinioRepository
 	table    schema.Table
 	template *T
+	tx       *schema.Transaction
 }
 
 func (w WhereContainer[T]) WhereIndexedFieldEquals(field string, value string) FindByIndexedFieldContainer[T] {
-	return FindByIndexedFieldContainer[T]{w.ctx, w.repo, w.table, w.template, field, value}
+	return FindByIndexedFieldContainer[T]{w.ctx, w.repo, w.table, w.template, field, value, w.tx}
 }
 
 func (w WhereContainer[T]) WhereIdEquals(id string) FindByIdContainer[T] {
-	return FindByIdContainer[T]{w.ctx, w.repo, w.table, w.template, id}
+	return FindByIdContainer[T]{w.ctx, w.repo, w.table, w.template, id, w.tx}
 }
 
 type FindByIndexedFieldContainer[T any] struct {
@@ -142,6 +146,7 @@ type FindByIndexedFieldContainer[T any] struct {
 	template *T
 	field    string
 	value    string
+	tx       *schema.Transaction
 }
 
 // sql: select * from table_name where column1 = value1 (column1 is in an index)
@@ -153,12 +158,13 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) error {
 		return err
 	}
 
-	results := make([]T, len(coordinates))
+	results := make([]*T, len(coordinates))
 	errors := make([]*error, len(coordinates))
 	var wg sync.WaitGroup
 	wg.Add(len(coordinates))
 	var mu sync.Mutex
 
+	// get in parallel
 	for i, coordinate := range coordinates {
 		go func(i int, coordinate schema.DatabaseTableIdTuple) {
 			defer wg.Done()
@@ -167,27 +173,15 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) error {
 				errors[i] = &err
 				return
 			}
-			// read the actual record
-			recordData, err := f.repo.Client.GetObject(f.ctx, f.repo.BucketName, path, minio.GetObjectOptions{})
-			if err != nil {
-				errors[i] = &err
-				return
-			}
-			defer recordData.Close()
 
-			// parse the actual record
-			b, err := io.ReadAll(recordData)
+			err = getById(f.ctx, f.repo, f.tx, path, f.template)
+			mu.Lock()
+			defer mu.Unlock()
 			if err != nil {
 				errors[i] = &err
-				return
+			} else {
+				results[i] = f.template
 			}
-			mu.Lock()
-			if err := json.Unmarshal(b, f.template); err != nil {
-				errors[i] = &err
-				return
-			}
-			results[i] = *f.template
-			mu.Unlock()
 		}(i, coordinate)
 	}
 	wg.Wait()
@@ -199,13 +193,13 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) error {
 
 	*destination = make([]*T, 0, len(results))
 	for _, result := range results {
-		*destination = append(*destination, &result)
+		*destination = append(*destination, result)
 	}
 	return nil
 }
 
 func (f FindByIndexedFieldContainer[T]) FindIds(destination *[]schema.DatabaseTableIdTuple) error {
-	paths, err := f.repo.selectPathsFromTableWhereIndexedFieldEquals(f.ctx, f.table, f.field, f.value)
+	paths, err := f.repo.selectPathsFromTableWhereIndexedFieldEquals(f.ctx, f.tx, f.table, f.field, f.value)
 	if err != nil {
 		return err
 	}
@@ -226,33 +220,73 @@ type FindByIdContainer[T any] struct {
 	table    schema.Table
 	template *T
 	id       string
+	tx       *schema.Transaction
 }
 
 // sql: select * from table_name where id = value1
 // returns the entity with the matching id. If no entity is found, returns a NoSuchKeyError
 func (f FindByIdContainer[T]) Find(destination *T) error {
 	path := f.table.Path(f.id)
-	// read the actual record
-	recordData, err := f.repo.Client.GetObject(f.ctx, f.repo.BucketName, path, minio.GetObjectOptions{})
-	if err != nil {
+
+	return getById(f.ctx, f.repo, f.tx, path, destination)
+
+}
+
+func getById[T any](ctx context.Context, repo *MinioRepository, transaction *schema.Transaction, path string, destination *T) error {
+	if err := transaction.IsOk(); err != nil {
 		return err
 	}
-	defer recordData.Close()
+	if cached, ok := transaction.Cache[path]; ok {
+		val := *cached
+		var t *T = val.(*T)
+		*destination = *t
+	} else {
+		found := false
+		// do not load versions older than the start of the transaction (part of the mvcc principle)
+		for object := range repo.Client.ListObjects(ctx, repo.BucketName, minio.ListObjectsOptions{
+			Prefix: path,
+			WithVersions: true,
+			ReverseVersions: true,
+			WithMetadata: true,
+		}) {
+			if object.Err != nil {
+				return object.Err
+			}
 
-	// parse the actual record
-	b, err := io.ReadAll(recordData)
-	if err != nil {
-		respErr := minio.ToErrorResponse(err)
-		if respErr.StatusCode == http.StatusNotFound {
+			if object.LastModified.UnixMicro() < transaction.StartMicroseconds {
+				// read the actual record
+				recordData, err := repo.Client.GetObject(ctx, repo.BucketName, path, minio.GetObjectOptions{})
+				if err != nil {
+					return err
+				}
+				defer recordData.Close()
+			
+				// parse the actual record
+				b, err := io.ReadAll(recordData)
+				if err != nil {
+					respErr := minio.ToErrorResponse(err)
+					if respErr.StatusCode == http.StatusNotFound {
+						return &NoSuchKeyError{Details: fmt.Sprintf("object %s does not exist", path)}
+					} else {
+						return fmt.Errorf("failed to get object with Path %s: %w", path, err)
+					}
+				}
+				if err := json.Unmarshal(b, destination); err != nil {
+					return err
+				}
+				found = true
+				break
+			}	
+		}	
+
+		if !found {
 			return &NoSuchKeyError{Details: fmt.Sprintf("object %s does not exist", path)}
 		} else {
-			return fmt.Errorf("failed to get object with Id %s from table %s: %w", f.id, f.table.Name, err)
+			// cache the result in case it is read again
+			var a any = destination
+			transaction.Cache[path] = &a
 		}
 	}
-	if err := json.Unmarshal(b, f.template); err != nil {
-		return err
-	}
-	*destination = *f.template
 	return nil
 }
 
@@ -261,20 +295,6 @@ func (f FindByIdContainer[T]) Find(destination *T) error {
 func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any) error {
 	var err error
 
-	// data file for entity
-	transactionStep := schema.TransactionStep{
-		Id: uuid.New().String(),
-		Type: "insert-data",
-		ContentType: "application/json",
-		InitialETag: "*",
-	}
-	transaction.Steps = append(transaction.Steps, &transactionStep)
-
-	transactionStep.Data, err = json.Marshal(entity)
-	if err != nil {
-		return err
-	}
-
 	// use reflection to fetch the value of the Id
 	var id string
 	id, err = getFieldValueAsString(entity, "Id")
@@ -282,7 +302,10 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 		return err
 	}
 
-	transactionStep.Path = table.Path(id)
+	err = transaction.AddStep("insert-data", "application/json", table.Path(id), "*", entity)
+	if err != nil {
+		return err
+	}
 
 	// handle indices
 	// use the path as a tree style index. that way, we simply walk down the tree until we find the key
@@ -293,15 +316,11 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 			return err
 		}
 
-		transactionStep := schema.TransactionStep{
-			Id: uuid.New().String(),
-			Type: "insert-index",
-			ContentType: "text/plain",
-			InitialETag: "*", // fail if the object already exists, since this is an insert not an upsert. if someone beat us to it, that would mean a conflict
-			Path: index.Path(value, id),
-			Data: []byte{}, // no data for index entries
+		 // ETag: "*" - fail if the object already exists, since this is an insert not an upsert. if someone beat us to it, that would mean a conflict
+		err = transaction.AddStep("insert-index", "text/plain", index.Path(value, id), "*", nil)
+		if err != nil {
+			return err
 		}
-		transaction.Steps = append(transaction.Steps, &transactionStep)
 	}
 
 	err = r.updateTransaction(ctx, transaction)
@@ -317,9 +336,7 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 			// UserMetadata: map[string]string{
 			// 	"who, what, when, for auditing purposes, same for updates": id,
 			// },
-			UserMetadata: map[string]string{
-				ROLLBACK_ID: transactionStep.Id,
-			},
+			UserMetadata: transactionStep.UserMetadata,
 		}
 		if transactionStep.InitialETag == "*" {
 			opts.SetMatchETagExcept(transactionStep.InitialETag)
@@ -327,13 +344,13 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 			opts.SetMatchETag(transactionStep.InitialETag)
 		}
 	
-		uploadInfo, err := r.Client.PutObject(ctx, r.BucketName, transactionStep.Path, bytes.NewReader(transactionStep.Data), int64(len(transactionStep.Data)), opts)
+		uploadInfo, err := r.Client.PutObject(ctx, r.BucketName, transactionStep.Path, bytes.NewReader(*transactionStep.Data), int64(len(*transactionStep.Data)), opts)
 		if err != nil {
 			respErr := minio.ToErrorResponse(err)
 			if respErr.StatusCode == http.StatusPreconditionFailed {
 				return &DuplicateKeyError{Details: fmt.Sprintf("object %s already exists", transactionStep.Path)}
 			} else {
-				return fmt.Errorf("failed to put object with Id %s to path %s: %w", transactionStep.Id, transactionStep.Path, err)
+				return fmt.Errorf("failed to put object with Id %s to path %s: %w", id, transactionStep.Path, err)
 			}
 		}
 		transactionStep.FinalETag = uploadInfo.ETag
@@ -351,48 +368,59 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 }
 
 // sql: select * from table_name where column1 = value1 (column1 is in an index)
-func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx context.Context, table schema.Table, field string, value string) (*util.MutList[string], error) {
-	var paths = util.NewMutList[string]()
+func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx context.Context, transaction *schema.Transaction, table schema.Table, field string, value string) (*util.MutList[string], error) {
+	matchingPaths := util.NewMutList[string]()
 	// use the index definition to find the path of the actual record containing the data that the caller wants to read
 	index, err := table.GetIndex(field)
 	if err != nil {
-		return paths, err
+		return matchingPaths, err
 	}
 	indexPath := index.PathNoId(value) + "/" // add a slash since we don't do a recursive search, and without it, it just returns the folder, not the files in the folder
 
-	// Channel to hold object names to be removed
-	objectsCh := make(chan minio.ObjectInfo)
+	// only need one per path. but there can be multiple version, so only select the one that is older than the transaction start time
+	relevantPaths := make(map[string]bool) // effectively a set
+
 	errors := util.NewMutList[error]()
 
 	// Goroutine to list objects and send them to the channel
-	go func() {
-		defer close(objectsCh) // Close the channel when listing is done
-		listOpts := minio.ListObjectsOptions{
-			Prefix: indexPath, // default is non-recursive
-		}
-		for object := range r.Client.ListObjects(ctx, r.BucketName, listOpts) {
-			if object.Err != nil {
-				errors.Add(object.Err)
-			} else {
-				objectsCh <- object
-			}
-		}
-	}() // End of goroutine
-
-	// Process objects from the channel
-	for object := range objectsCh {
+	listOpts := minio.ListObjectsOptions{
+		Prefix: indexPath, // default is non-recursive
+		WithMetadata: true,
+		// versions are irrelevant on index entries because we store no data, just the path. so we use the metadata to know if it was created after the tx started (e.g. by a different transaction)
+	}
+	for object := range r.Client.ListObjects(ctx, r.BucketName, listOpts) {
 		if object.Err != nil {
 			errors.Add(object.Err)
 		} else {
-			paths.Add(object.Key)
+			lastModifiedFromMetadata := object.UserMetadata[MINIO_META_PREFIX+schema.LAST_MODIFIED]
+			lastModified, err := strconv.ParseInt(lastModifiedFromMetadata, 10, 64)
+			if err != nil {
+				errors.Add(err)
+			}
+			if lastModified < transaction.StartMicroseconds {
+				relevantPaths[object.Key] = true
+			}
 		}
 	}
 
-	if errors.Len() > 0 {
-		return paths, errors.Items()[0]
+	// TODO cope with deleted index entries?
+
+	// add anything from the cache that matches the path, because those have a LastModified in Minio that is newer than the tx start, but they are still relevant
+	for key := range transaction.Cache {
+		if strings.HasPrefix(key, indexPath) {
+			relevantPaths[key] = true
+		}
 	}
 
-	return paths, nil
+	for key := range relevantPaths {
+		matchingPaths.Add(key)
+	}
+
+	if errors.Len() > 0 {
+		return matchingPaths, errors.Items()[0]
+	}
+
+	return matchingPaths, nil
 }
 
 func getFieldValueAsString(obj interface{}, fieldName string) (string, error) {
@@ -548,6 +576,12 @@ func (r *MinioRepository) GetOpenTransactions(ctx context.Context, transactions 
 }
 
 func (r *MinioRepository) Commit(ctx context.Context, tx *schema.Transaction) error {
+	tx.State = "Committed"
+	err := r.updateTransaction(ctx, tx) // store in case this process fails and needs recovering
+	if err != nil {
+		return err
+	}
+
 	// delete the transaction
 	governanceBypass := true // transactions are not subject to governance
 	if err := r.DeleteFolder(ctx, tx.GetPath(), governanceBypass, true); err != nil {
@@ -557,6 +591,12 @@ func (r *MinioRepository) Commit(ctx context.Context, tx *schema.Transaction) er
 }
 
 func (r *MinioRepository) Rollback(ctx context.Context, tx *schema.Transaction) []error {
+	tx.State = "RolledBack"
+	err := r.updateTransaction(ctx, tx) // store in case this process fails and needs recovering
+	if err != nil {
+		return []error{err}
+	}
+
 	errs := make([]error, 0, 10) // remove as much as possible
 	// go through each transaction step in reverse order and delete exactly that version
 	for i := len(tx.Steps) - 1; i >= 0; i-- {
@@ -578,22 +618,31 @@ func (r *MinioRepository) Rollback(ctx context.Context, tx *schema.Transaction) 
 				} else {
 					// delete it, if the metadata matches
 					// not working: var metaDataRollbackId string = object.UserMetadata[ROLLBACK_ID]
-					var metaDataRollbackId string = object.UserMetadata["X-Amz-Meta-Rollbackid"]
-					if metaDataRollbackId == step.Id {
+					var metaDataRollbackId string = object.UserMetadata[MINIO_META_PREFIX+schema.ROLLBACK_ID]
+					if metaDataRollbackId == step.UserMetadata[schema.ROLLBACK_ID] {
 						versionIds = append(versionIds, object.VersionID)
 					}
 				}
 			}
 		}
 
+		var wg sync.WaitGroup
+		wg.Add(len(versionIds))
+		var mu sync.Mutex
 		for _, versionId := range versionIds {
-			err := r.Client.RemoveObject(ctx, r.BucketName, step.Path, minio.RemoveObjectOptions{
-				VersionID: versionId,
-			})
-			if err != nil {
-				errs = append(errs, err)
-			}
+			go func(versionId string) {
+				defer wg.Done()
+				err := r.Client.RemoveObject(ctx, r.BucketName, step.Path, minio.RemoveObjectOptions{
+					VersionID: versionId,
+				})
+				if err != nil {
+					mu.Lock()
+					defer mu.Unlock()
+					errs = append(errs, err)
+				}
+			}(versionId)
 		}
+		wg.Wait()
 
 		// TODO do we need to look at the step.Type?
 		// TODO how do we deal with deletion, i.e. make the object visible again
