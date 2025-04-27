@@ -52,7 +52,7 @@ func TestTransactions_StartCommit(t *testing.T) {
 
 	// read the transaction
 	var transactions = []schema.Transaction{}
-	err = repo.GetOpenTransactions(context.Background(), &transactions)
+	err = repo.GetTransactionsInProgress(context.Background(), &transactions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestTransactions_StartRollback(t *testing.T) {
 	
 	// read the transaction
 	var transactions = []schema.Transaction{}
-	err = repo.GetOpenTransactions(context.Background(), &transactions)
+	err = repo.GetTransactionsInProgress(context.Background(), &transactions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,9 +260,7 @@ func TestTransactions_StartInsertCommit_CheckRepeatableReads(t *testing.T) {
 	// the aim of all transactions. therefore instead of blocking, it fails fast.
 	err = repo.InsertIntoTable(context.Background(), &tx2, T_ACCOUNT, account1)
 	if err != nil {
-		// check it is of type DuplicateKeyError
-		var duplicateKeyError *min.DuplicateKeyError
-		if !errors.As(err, &duplicateKeyError) {
+		if !errors.Is(err, min.DuplicateKeyError) {
 			t.Fatal(err)
 		}
 		return
@@ -271,11 +269,12 @@ func TestTransactions_StartInsertCommit_CheckRepeatableReads(t *testing.T) {
 }
 
 func TestTransactions_TODO(t *testing.T) {
+	assert.Fail(t, "TODO update")
+
 	assert.Fail(t, "TODO test rollback works when we were unable to write the final transaction file upon insert")
 	assert.Fail(t, "TODO test that a second transaction doesn't read the newly updated version of a row")
 	assert.Fail(t, "TODO delete")
 	assert.Fail(t, "TODO delete and impact on indices")
-	assert.Fail(t, "TODO update")
 	assert.Fail(t, "TODO update and impact on indices")
 	assert.Fail(t, "TODO range scans")
 

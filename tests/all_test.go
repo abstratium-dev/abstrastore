@@ -355,9 +355,9 @@ func TestAll(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if duplicateErr, ok := err.(*min.NoSuchKeyError); ok {
+		if duplicateErr, ok := err.(*min.NoSuchKeyErrorWithDetails); ok {
 			// assert
-			assert.Equal(&min.NoSuchKeyError{Details: fmt.Sprintf("object %s does not exist", T_ACCOUNT.Path("unknown"))}, duplicateErr)
+			assert.Equal(&min.NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", T_ACCOUNT.Path("unknown"))}, duplicateErr)
 		} else {
 			t.Fatal("expected NoSuchKeyError")
 		}
@@ -368,9 +368,9 @@ func TestAll(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if duplicateErr, ok := err.(*min.DuplicateKeyError); ok {
+		if duplicateErr, ok := err.(*min.DuplicateKeyErrorWithDetails); ok {
 			// assert
-			assert.Equal(&min.DuplicateKeyError{Details: fmt.Sprintf("object %s already exists", T_ACCOUNT.Path(account1.Id))}, duplicateErr)
+			assert.Equal(&min.DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("object %s already exists", T_ACCOUNT.Path(account1.Id))}, duplicateErr)
 		} else {
 			t.Fatal("expected DuplicateKeyError")
 		}

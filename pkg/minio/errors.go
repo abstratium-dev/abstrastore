@@ -1,0 +1,63 @@
+package minio
+
+import "fmt"
+
+// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Duplicate Key Error
+// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+var DuplicateKeyError = fmt.Errorf("object already exists")
+
+type DuplicateKeyErrorWithDetails struct {
+	Details string
+}
+
+func (e *DuplicateKeyErrorWithDetails) Error() string {
+	return e.Details
+}
+
+func (e *DuplicateKeyErrorWithDetails) Unwrap() error {
+	return DuplicateKeyError
+}
+
+// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// NoSuchKeyError
+// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+var NoSuchKeyError = fmt.Errorf("object does not exist")
+
+type NoSuchKeyErrorWithDetails struct {
+	Details string
+}
+
+func (e *NoSuchKeyErrorWithDetails) Error() string {
+	return e.Details
+}
+
+func (e *NoSuchKeyErrorWithDetails) Unwrap() error {
+	return NoSuchKeyError
+}
+
+// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Stale Object Error
+// ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+var StaleObjectError = fmt.Errorf("object is stale")
+
+type StaleObjectErrorWithDetails[T any] struct {
+	Details string
+	Object  T
+}
+
+func (e *StaleObjectErrorWithDetails[T]) Error() string {
+	return e.Details
+}
+
+func (e *StaleObjectErrorWithDetails[T]) GetStaleObject() T {
+	return e.Object
+}
+
+func (e *StaleObjectErrorWithDetails[T]) Unwrap() error {
+	return StaleObjectError
+}
+

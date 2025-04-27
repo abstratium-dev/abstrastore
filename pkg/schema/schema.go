@@ -33,6 +33,11 @@ func (t *Table) Path(id string) string {
 	return fmt.Sprintf("%s/%s.json", t.pathPrefix(), id)
 }
 
+// full path to place where we store the indices, for the given table, so that they can be managed during update and delete
+func (t *Table) IndicesPath(id string) string {
+	return fmt.Sprintf("%s/%s.indices", t.pathPrefix(), id)
+}
+
 // return the index object for the given field name
 func (t *Table) GetIndex(field string) (*Index, error) {
 	for _, index := range t.Indices {
@@ -120,7 +125,7 @@ type Transaction struct {
 	// key is path to object; allows the transaction to avoid reading things that it wrote or already read (enabling repeatable reads)
 	Cache map[string]*any `json:"-"`
 
-	// Open, Committed, RolledBack
+	// InProgress, Committed, RolledBack
 	State string `json:"state"`
 }
 
@@ -131,7 +136,7 @@ func NewTransaction(timeout time.Duration) Transaction {
 		StartMicroseconds: time.Now().Add(timeout).UnixMicro(),
 		Steps: make([]*TransactionStep, 0, 10),
 		Cache: make(map[string]*any),
-		State: "Open",
+		State: "InProgress",
 	}
 }
 
@@ -148,7 +153,7 @@ func (t *Transaction) IsOk() error {
 		return TransactionAlreadyCommittedError
 	} else if t.State == "RolledBack" {
 		return TransactionAlreadyRolledBackError
-	} else if t.State != "Open" {
+	} else if t.State != "InProgress" {
 		panic("Transaction is in an unknown state")
 	}
 
@@ -163,6 +168,12 @@ func (t *Transaction) GetPath() string {
 	return fmt.Sprintf("transactions/%d___%s", t.StartMicroseconds, t.Id)
 }
 
+// Param: Type - the type of the step
+// Param: ContentType - the content type of the object
+// Param: Path - the path of the object
+// Param: InitialETag - the initial ETag of the object, if "" then none is set and a change will always be successful
+// Param: Entity - the object itself
+// Returns: an error if the transaction is not InProgress or has timed out
 func (t *Transaction) AddStep(Type string, ContentType string, Path string, InitialETag string, Entity any) error {
 	if err := t.IsOk(); err != nil {
 		return err
@@ -187,8 +198,10 @@ func (t *Transaction) AddStep(Type string, ContentType string, Path string, Init
 		ContentType: ContentType,
 		Path: Path,
 		InitialETag: InitialETag,
+		InitialVersionId: "",
 		UserMetadata: userMetadata,
 		Data: &data,
+		Executed: false,
 	}
 	t.Steps = append(t.Steps, &step)
 
@@ -207,8 +220,12 @@ type TransactionStep struct {
 	ContentType string `json:"contentType"`
 	Path string `json:"path"`
 	InitialETag string `json:"initialEtag"`
+	// used for deletion
+	InitialVersionId string `json:"initialVersionId"`
 	UserMetadata map[string]string `json:"userMetadata"`
 	Data *[]byte `json:"-"`
+	Executed bool `json:"executed"`
+
 	FinalETag string `json:"finalEtag"`
 	FinalVersionId string `json:"finalVersionId"`
 }

@@ -75,22 +75,6 @@ func GetRepository() *MinioRepository {
 	return repo
 }
 
-type DuplicateKeyError struct {
-	Details string
-}
-
-func (e *DuplicateKeyError) Error() string {
-	return e.Details
-}
-
-type NoSuchKeyError struct {
-	Details string
-}
-
-func (e *NoSuchKeyError) Error() string {
-	return e.Details
-}
-
 type TypedQuery[T any] struct {
 	ctx      context.Context
 	template *T
@@ -266,7 +250,7 @@ func getById[T any](ctx context.Context, repo *MinioRepository, transaction *sch
 				if err != nil {
 					respErr := minio.ToErrorResponse(err)
 					if respErr.StatusCode == http.StatusNotFound {
-						return &NoSuchKeyError{Details: fmt.Sprintf("object %s does not exist", path)}
+						return &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
 					} else {
 						return fmt.Errorf("failed to get object with Path %s: %w", path, err)
 					}
@@ -280,7 +264,7 @@ func getById[T any](ctx context.Context, repo *MinioRepository, transaction *sch
 		}	
 
 		if !found {
-			return &NoSuchKeyError{Details: fmt.Sprintf("object %s does not exist", path)}
+			return &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
 		} else {
 			// cache the result in case it is read again
 			var a any = destination
@@ -295,6 +279,10 @@ func getById[T any](ctx context.Context, repo *MinioRepository, transaction *sch
 func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any) error {
 	var err error
 
+	// //////////////////////////////////////////////////
+	// handle object
+	// //////////////////////////////////////////////////
+
 	// use reflection to fetch the value of the Id
 	var id string
 	id, err = getFieldValueAsString(entity, "Id")
@@ -307,8 +295,11 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 		return err
 	}
 
+	// //////////////////////////////////////////////////
 	// handle indices
+	// //////////////////////////////////////////////////
 	// use the path as a tree style index. that way, we simply walk down the tree until we find the key
+	var indexPathsBuilder strings.Builder
 	for _, index := range table.Indices {
 		// use reflection to fetch the value of the field that the index is based on
 		value, err := getFieldValueAsString(entity, index.Field)
@@ -321,6 +312,19 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 		if err != nil {
 			return err
 		}
+		indexPathsBuilder.WriteString(index.Path(value, id))
+		indexPathsBuilder.WriteByte('\n')
+	}
+
+	// //////////////////////////////////////////////////
+	// store the indices for this object, so that if we
+	// update or delete it, we know what to replace
+	// //////////////////////////////////////////////////
+	indicesPath := table.IndicesPath(id)
+	indicesData := []byte(indexPathsBuilder.String())
+	err = transaction.AddStep("insert-reverse-indices", "text/plain", indicesPath, "*", indicesData)
+	if err != nil {
+		return err
 	}
 
 	err = r.updateTransaction(ctx, transaction)
@@ -328,7 +332,139 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 		return err
 	}
 
+	// //////////////////////////////////////////////////
+	// execute the transaction steps
+	// //////////////////////////////////////////////////
+	err = executeTransactionSteps(ctx, *r.Client, r.BucketName, transaction, id)
+	if err != nil {
+		return err
+	}
+
+	// //////////////////////////////////////////////////
+	// update the transaction again, now that the ETags are known
+	// //////////////////////////////////////////////////
+	// if this step fails, we can still rollback, because we use the meta data in such cases to find the right version to remove
+	err = r.updateTransaction(ctx, transaction)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// sql: update table_name set everything where id = ?
+// does an optimistically locked update on an entity.
+// If the ETag is wrong this method returns a StaleObjectError.
+// If the object doesn't exist this method returns a NoSuchKeyError
+func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any, etag string) error {
+	var err error
+
+	// //////////////////////////////////////////////////
+	// handle object
+	// //////////////////////////////////////////////////
+
+	// use reflection to fetch the value of the Id
+	var id string
+	id, err = getFieldValueAsString(entity, "Id")
+	if err != nil {
+		return err
+	}
+
+	err = transaction.AddStep("update-data", "application/json", table.Path(id), etag, entity)
+	if err != nil {
+		return err
+	}
+
+	// //////////////////////////////////////////////////
+	// read existing indices to decide which index files
+	// to keep
+	// //////////////////////////////////////////////////
+	object, err := r.Client.GetObject(ctx, r.BucketName, table.IndicesPath(id), minio.GetObjectOptions{})
+	if err != nil {
+		return err
+	}
+	defer object.Close()
+	b, err := io.ReadAll(object)
+	if err != nil {
+		return err
+	}
+	existingIndices := strings.Split(string(b), "\n")
+
+	// //////////////////////////////////////////////////
+	// handle new indices
+	// //////////////////////////////////////////////////
+	newIndices := make([]string, 0, len(table.Indices))
+	for _, index := range table.Indices {
+		// use reflection to fetch the value of the field that the index is based on
+		value, err := getFieldValueAsString(entity, index.Field)
+		if err != nil {
+			return err
+		}
+
+		indexPath := index.Path(value, id)
+		if !slices.Contains(existingIndices, indexPath) {
+			// ETag: "" - we need to overwrite
+			err = transaction.AddStep("update-insert-index", "text/plain", indexPath, "", nil)
+			if err != nil {
+				return err
+			}
+		} // else keep it
+
+		newIndices = append(newIndices, indexPath)
+	}
+
+	// //////////////////////////////////////////////////
+	// calculate which ones to delete
+	// //////////////////////////////////////////////////
+	for _, existingIndex := range existingIndices {
+		if !slices.Contains(newIndices, existingIndex) {
+			// ETag: "" - not relevant for deletion
+			err = transaction.AddStep("update-delete-index", "text/plain", existingIndex, "", nil)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// //////////////////////////////////////////////////
+	// handle reverse indices
+	// //////////////////////////////////////////////////
+	// use the path as a tree style index. that way, we simply walk down the tree until we find the key
+	indicesPath := table.IndicesPath(id)
+	indicesData := []byte(strings.Join(newIndices, "\n"))
+	err = transaction.AddStep("update-reverse-indices", "text/plain", indicesPath, "", indicesData) // Etag: "" - we need to overwrite the file
+	if err != nil {
+		return err
+	}
+
+	err = r.updateTransaction(ctx, transaction)
+	if err != nil {
+		return err
+	}
+
+	// //////////////////////////////////////////////////
+	// execute the transaction steps
+	// //////////////////////////////////////////////////
+	err = executeTransactionSteps(ctx, *r.Client, r.BucketName, transaction, id)
+	if err != nil {
+		return err
+	}
+
+	// update the transaction again, now that the ETags are known
+	// if this step fails, we can still rollback, because we use the meta data in such cases to find the right version to remove
+	err = r.updateTransaction(ctx, transaction)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func executeTransactionSteps(ctx context.Context, client minio.Client, bucketName string, transaction *schema.Transaction, id string) error {
 	for _, transactionStep := range transaction.Steps {
+		if transactionStep.Executed {
+			continue
+		}
 
 		opts := minio.PutObjectOptions{
 			ContentType: transactionStep.ContentType,
@@ -338,30 +474,39 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 			// },
 			UserMetadata: transactionStep.UserMetadata,
 		}
-		if transactionStep.InitialETag == "*" {
+		if transactionStep.InitialETag == "" {
+			// ignore, since the caller wants to overwrite in all cases
+		} else if transactionStep.InitialETag == "*" {
 			opts.SetMatchETagExcept(transactionStep.InitialETag)
 		} else {
 			opts.SetMatchETag(transactionStep.InitialETag)
 		}
 	
-		uploadInfo, err := r.Client.PutObject(ctx, r.BucketName, transactionStep.Path, bytes.NewReader(*transactionStep.Data), int64(len(*transactionStep.Data)), opts)
-		if err != nil {
-			respErr := minio.ToErrorResponse(err)
-			if respErr.StatusCode == http.StatusPreconditionFailed {
-				return &DuplicateKeyError{Details: fmt.Sprintf("object %s already exists", transactionStep.Path)}
-			} else {
-				return fmt.Errorf("failed to put object with Id %s to path %s: %w", id, transactionStep.Path, err)
+		if strings.Contains(transactionStep.Type, "delete") {
+			opts := minio.RemoveObjectOptions{
 			}
+			if transactionStep.InitialVersionId != "" {
+				opts.VersionID = transactionStep.InitialVersionId
+			}
+			err := client.RemoveObject(ctx, bucketName, transactionStep.Path, opts)
+			if err != nil {
+				return err
+			}
+		} else { // insert/update
+			uploadInfo, err := client.PutObject(ctx, bucketName, transactionStep.Path, bytes.NewReader(*transactionStep.Data), int64(len(*transactionStep.Data)), opts)
+			if err != nil {
+				respErr := minio.ToErrorResponse(err)
+				if respErr.StatusCode == http.StatusPreconditionFailed {
+					return &DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("object %s already exists", transactionStep.Path)}
+				} else {
+					return fmt.Errorf("failed to put object with Id %s to path %s: %w", id, transactionStep.Path, err)
+				}
+			}
+	
+			transactionStep.FinalETag = uploadInfo.ETag
+			transactionStep.FinalVersionId = uploadInfo.VersionID
+			transactionStep.Executed = true
 		}
-		transactionStep.FinalETag = uploadInfo.ETag
-		transactionStep.FinalVersionId = uploadInfo.VersionID
-	}
-
-	// update the transaction again, now that the ETags are known
-	// if this step fails, we can still rollback, because we use the meta data in such cases to find the right version to remove
-	err = r.updateTransaction(ctx, transaction)
-	if err != nil {
-		return err
 	}
 
 	return nil
@@ -482,7 +627,7 @@ func ReadObjectVersionOlderThanTimestamp(ctx context.Context, table schema.Table
 	}
 
 	if versionToRead == "" {
-		return nil, &NoSuchKeyError{Details: fmt.Sprintf("object %s does not exist", table.Path(id))}
+		return nil, &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", table.Path(id))}
 	}
 
 	// read the object
@@ -508,7 +653,7 @@ func (r *MinioRepository) StartTransaction(ctx context.Context, timeout time.Dur
 	if err != nil {
 		respErr := minio.ToErrorResponse(err)
 		if respErr.StatusCode == http.StatusPreconditionFailed {
-			return tx, &DuplicateKeyError{Details: fmt.Sprintf("transaction %s already exists", tx.Id)}
+			return tx, &DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("transaction %s already exists", tx.Id)}
 		} else {
 			return tx, fmt.Errorf("failed to put transaction %s: %w", tx.Id, err)
 		}
@@ -534,7 +679,7 @@ func (r *MinioRepository) updateTransaction(ctx context.Context, transaction *sc
 	if err != nil {
 		respErr := minio.ToErrorResponse(err)
 		if respErr.StatusCode == http.StatusPreconditionFailed {
-			return &DuplicateKeyError{Details: fmt.Sprintf("transaction %s already exists", transaction.Id)}
+			return &DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("transaction %s already exists", transaction.Id)}
 		} else {
 			return fmt.Errorf("failed to put transaction %s: %w", transaction.Id, err)
 		}
@@ -543,7 +688,7 @@ func (r *MinioRepository) updateTransaction(ctx context.Context, transaction *sc
 	return nil
 }
 
-func (r *MinioRepository) GetOpenTransactions(ctx context.Context, transactions *[]schema.Transaction) error {
+func (r *MinioRepository) GetTransactionsInProgress(ctx context.Context, transactions *[]schema.Transaction) error {
 	// read all objects in the transactions folder
 	objectCh := r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
 		Prefix:    "transactions/",
