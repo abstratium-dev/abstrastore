@@ -220,11 +220,15 @@ func TestTransactions_StartInsertRollback(t *testing.T) {
 	assert.Equal(0, len(accountsRead))
 }
 
-func TestTransactions_StartInsertCommit_CheckRepeatableReads(t *testing.T) {
+// because we optimistically lock, and assume that transactions will commit, this test shows how the framework fails fast
+// by returning an ObjectLockedError (rather than locking and then failing). It is a signal to the caller that another transaction
+// is about to commit the same object. If the transaction were blocked until the first one finished, it would more than likely 
+// fail with a StaleObjectError.
+func TestTransactions_T1StartInsert_T2StartInsert_ObjectLockedError_BecauseT1IsNotFinished(t *testing.T) {
 
 	repo := getRepo()
 
-	tx, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx1, err := repo.StartTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,10 +238,10 @@ func TestTransactions_StartInsertCommit_CheckRepeatableReads(t *testing.T) {
 
 	var account1 = &Account{
 		Id:   uuid.New().String(),
-		Name: "John Doe " + tx.Id, // helps with concurrent tests
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
-	err = repo.InsertIntoTable(context.Background(), &tx, T_ACCOUNT, account1)
+	err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,10 +258,10 @@ func TestTransactions_StartInsertCommit_CheckRepeatableReads(t *testing.T) {
 			t.Fatal(errs)
 		}
 		
-			errs = repo.Rollback(context.Background(), &tx)
-			if len(errs) > 0 {
-				t.Fatal(errs)
-			}
+		errs = repo.Rollback(context.Background(), &tx1)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
 	}()
 
 	// in mysql this would block and then upon committing tx1, this would fail.
@@ -265,6 +269,57 @@ func TestTransactions_StartInsertCommit_CheckRepeatableReads(t *testing.T) {
 	// rather than locking, abstrastore uses optimistic locking. while you might say
 	// ah this is like a phantom read, abstrastore assumes that t1 will commit, because that is
 	// the aim of all transactions. therefore instead of blocking, it fails fast.
+	err = repo.InsertIntoTable(context.Background(), &tx2, T_ACCOUNT, account1)
+	if err != nil {
+		if !errors.Is(err, min.ObjectLockedError) {
+			t.Fatal(err)
+		}
+		return
+	}
+	t.Fatal("should fail because object already exists")
+}
+
+func TestTransactions_T1StartInsertCommit_T2StartInsert_DuplicateKeyError(t *testing.T) {
+
+	repo := getRepo()
+
+	tx1, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
+	}
+
+	err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = repo.Commit(context.Background(), &tx1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now make another transaction insert the same row
+	tx2, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx2)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
+
+	// tx1 committed successfully, so inserting the same object again will always fail
 	err = repo.InsertIntoTable(context.Background(), &tx2, T_ACCOUNT, account1)
 	if err != nil {
 		if !errors.Is(err, min.DuplicateKeyError) {
@@ -277,12 +332,15 @@ func TestTransactions_StartInsertCommit_CheckRepeatableReads(t *testing.T) {
 
 func TestTransactions_TODO(t *testing.T) {
 	assert.Fail(t, "TODO update")
+	assert.Fail(t, "TODO prove that t2 ignores an entry from t1 that isn't committed yet")
+	assert.Fail(t, "TODO update StaleObjectException")
 
 	assert.Fail(t, "TODO test rollback works when we were unable to write the final transaction file upon insert")
 	assert.Fail(t, "TODO test that a second transaction doesn't read the newly updated version of a row")
 	assert.Fail(t, "TODO delete")
 	assert.Fail(t, "TODO delete and impact on indices")
 	assert.Fail(t, "TODO update and impact on indices")
+	assert.Fail(t, "TODO upsert and impact on indices")
 	assert.Fail(t, "TODO range scans")
 
 	// range scans

@@ -22,6 +22,7 @@ import (
 )
 
 const MINIO_META_PREFIX = "X-Amz-Meta-"
+const TX_FILENAME = "tx.json"
 
 var repo *MinioRepository
 
@@ -275,7 +276,9 @@ func getById[T any](ctx context.Context, repo *MinioRepository, transaction *sch
 }
 
 // sql: insert into table_name (column1, column2, column3, column4) values (value1, value2, value3, value4)
-// inserts a new entity into the table. If the entity already exists, returns a DuplicateKeyError
+// inserts a new entity into the table.
+// If the entity already exists, returns a DuplicateKeyError.
+// If the entity is about to be written by a different transaction, returns a ObjectLockedError.
 func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any) error {
 	var err error
 
@@ -335,7 +338,7 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 	// //////////////////////////////////////////////////
 	// execute the transaction steps
 	// //////////////////////////////////////////////////
-	err = executeTransactionSteps(ctx, *r.Client, r.BucketName, transaction, id)
+	err = r.executeTransactionSteps(ctx, transaction, id)
 	if err != nil {
 		return err
 	}
@@ -355,7 +358,7 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 // sql: update table_name set everything where id = ?
 // does an optimistically locked update on an entity.
 // If the ETag is wrong this method returns a StaleObjectError.
-// If the object doesn't exist this method returns a NoSuchKeyError
+// If the object doesn't exist this method returns a NoSuchKeyError.
 func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any, etag string) error {
 	var err error
 
@@ -445,7 +448,7 @@ func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.T
 	// //////////////////////////////////////////////////
 	// execute the transaction steps
 	// //////////////////////////////////////////////////
-	err = executeTransactionSteps(ctx, *r.Client, r.BucketName, transaction, id)
+	err = r.executeTransactionSteps(ctx, transaction, id)
 	if err != nil {
 		return err
 	}
@@ -460,7 +463,7 @@ func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.T
 	return nil
 }
 
-func executeTransactionSteps(ctx context.Context, client minio.Client, bucketName string, transaction *schema.Transaction, id string) error {
+func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transaction *schema.Transaction, id string) error {
 	for _, transactionStep := range transaction.Steps {
 		if transactionStep.Executed {
 			continue
@@ -488,19 +491,44 @@ func executeTransactionSteps(ctx context.Context, client minio.Client, bucketNam
 			if transactionStep.InitialVersionId != "" {
 				opts.VersionID = transactionStep.InitialVersionId
 			}
-			err := client.RemoveObject(ctx, bucketName, transactionStep.Path, opts)
+			err := r.Client.RemoveObject(ctx, r.BucketName, transactionStep.Path, opts)
 			if err != nil {
 				return err
 			}
 		} else { // insert/update
-			uploadInfo, err := client.PutObject(ctx, bucketName, transactionStep.Path, bytes.NewReader(*transactionStep.Data), int64(len(*transactionStep.Data)), opts)
+			uploadInfo, err := r.Client.PutObject(ctx, r.BucketName, transactionStep.Path, bytes.NewReader(*transactionStep.Data), int64(len(*transactionStep.Data)), opts)
 			if err != nil {
 				respErr := minio.ToErrorResponse(err)
 				if respErr.StatusCode == http.StatusPreconditionFailed {
-					return &DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("object %s already exists", transactionStep.Path)}
-				} else {
-					return fmt.Errorf("failed to put object with Id %s to path %s: %w", id, transactionStep.Path, err)
+					if transactionStep.InitialETag == "*" { // "must not exist", i.e. insert
+						// if no transaction that is in progress added this object, it's a duplicate key.
+						// if a different transaction that is also in progress added this object, it's a stale object (they got there first and we will fail assuming they commit).
+
+						transactionsInProgress, err := r.getOtherTransactionsInProgress(ctx, transaction)
+						if err != nil {
+							return err
+						}
+						for object := range r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
+							Prefix: transactionStep.Path,
+							WithVersions: true,
+							WithMetadata: true,
+						}) {
+							if object.Err != nil {
+								return object.Err
+							}
+							objectTxId := object.UserMetadata[MINIO_META_PREFIX+schema.TX_ID]
+							for id, timeoutMicros := range transactionsInProgress {
+								if id == objectTxId {
+									return &ObjectLockedErrorWithDetails[any]{Details: fmt.Sprintf("Object %s has already been written by transaction %s, which is set to expire by %d. Reload and try again.", transactionStep.Path, objectTxId, timeoutMicros), Object: transactionStep.Entity, DueByMsEpoch: timeoutMicros}
+								}
+							}
+						}	
+						return &DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("object %s already exists", transactionStep.Path)}
+					} else if transactionStep.InitialETag != "" { // not "can be anything", i.e. must match, i.e. an update (or delete?)
+						return &StaleObjectErrorWithDetails[any]{Details: fmt.Sprintf("object %s is stale", transactionStep.Path), Object: transactionStep.Entity}
+					}
 				}
+				return fmt.Errorf("failed to put object with Id %s to path %s: %w", id, transactionStep.Path, err)
 			}
 	
 			transactionStep.FinalETag = uploadInfo.ETag
@@ -595,8 +623,43 @@ func getFieldValueAsString(obj interface{}, fieldName string) (string, error) {
 	return field.Interface().(string), nil
 }
 
-func ReadObjectVersionOlderThanTimestamp(ctx context.Context, table schema.Table, id string, timestamp time.Time) (*[]byte, error) {
-	objects := repo.Client.ListObjects(ctx, repo.BucketName, minio.ListObjectsOptions{
+// returns a map of txId to timeoutMicros, excluding the given transaction
+func (r *MinioRepository) getOtherTransactionsInProgress(ctx context.Context, tx *schema.Transaction) (map[string]uint64, error) {
+	transactionsInProgress := make(map[string]uint64, 10)
+	for object := range r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
+		Prefix:       tx.GetRootPath(),
+		Recursive: false,
+	}) {
+		if object.Err != nil {
+			return nil, object.Err
+		}
+		id, timeoutMicros := tx.GetIdAndTimeoutMicrosFromPath(object.Key)
+		if id != tx.Id {
+			transactionsInProgress[id] = timeoutMicros
+		} // else exclude own, since we don't mind reading our own data
+	}
+	return transactionsInProgress, nil
+}
+
+// Returns the version of the object that was written before the transaction started, i.e. older than the transaction start timestamp.
+// Ignores all versions from transactions that are still in progress.
+func (r *MinioRepository) ReadObjectVersionForTransaction(ctx context.Context, tx *schema.Transaction, table schema.Table, id string) (*[]byte, error) {
+	// TODO move this up a level and require that open transaction IDs are passed in, so that they aren't read multiple times?
+	transactionIdsToIgnore := make([]string, 0, 10)
+	transactionsInProgress, err := r.getOtherTransactionsInProgress(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	
+	// transactionsInProgress is a map of txId and timeoutMicros
+	// ignore the timeout here and add all txIds that exist, since even though the tx has timed out, 
+	// it hasn't yet rolled back, and such objects shouldn't be visible to other transactions.
+	// we skip such IDs a little further down.
+	for id := range transactionsInProgress {
+		transactionIdsToIgnore = append(transactionIdsToIgnore, id)
+	}
+
+	objects := r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
 		Prefix:       table.Path(id), // full path of object we are reading
 		WithVersions: true,           // get version info so that we can find the object with a timestamp before the transaction started
 	})
@@ -620,9 +683,12 @@ func ReadObjectVersionOlderThanTimestamp(ctx context.Context, table schema.Table
 			return nil, object.Err
 		}
 
-		if object.LastModified.Before(timestamp) {
-			versionToRead = object.VersionID
-			break
+		if object.LastModified.Before(time.UnixMicro(tx.StartMicroseconds)) {
+			// ignore transactions that are still in progress
+			if !slices.Contains(transactionIdsToIgnore, object.UserMetadata[MINIO_META_PREFIX+schema.TX_ID]) {
+				versionToRead = object.VersionID
+				break
+			}
 		}
 	}
 
@@ -631,7 +697,7 @@ func ReadObjectVersionOlderThanTimestamp(ctx context.Context, table schema.Table
 	}
 
 	// read the object
-	objectData, err := repo.Client.GetObject(ctx, repo.BucketName, table.Path(id), minio.GetObjectOptions{
+	objectData, err := r.Client.GetObject(ctx, r.BucketName, table.Path(id), minio.GetObjectOptions{
 		VersionID: versionToRead,
 	})
 	if err != nil {
@@ -675,7 +741,7 @@ func (r *MinioRepository) updateTransaction(ctx context.Context, transaction *sc
 	} else {
 		opts.SetMatchETag(transaction.Etag)
 	}
-	uploadInfo, err := r.Client.PutObject(ctx, r.BucketName, transaction.GetPath()+"/tx.json", bytes.NewReader(json), int64(len(json)), opts)
+	uploadInfo, err := r.Client.PutObject(ctx, r.BucketName, transaction.GetPath()+"/"+TX_FILENAME, bytes.NewReader(json), int64(len(json)), opts)
 	if err != nil {
 		respErr := minio.ToErrorResponse(err)
 		if respErr.StatusCode == http.StatusPreconditionFailed {
@@ -690,8 +756,9 @@ func (r *MinioRepository) updateTransaction(ctx context.Context, transaction *sc
 
 func (r *MinioRepository) GetTransactionsInProgress(ctx context.Context, transactions *[]schema.Transaction) error {
 	// read all objects in the transactions folder
+	tx := schema.NewTransaction(0)
 	objectCh := r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
-		Prefix:    "transactions/",
+		Prefix:    tx.GetRootPath(),
 		Recursive: false,
 	})
 	for object := range objectCh {
@@ -700,7 +767,7 @@ func (r *MinioRepository) GetTransactionsInProgress(ctx context.Context, transac
 		}
 
 		// read the actual tx
-		txData, err := r.Client.GetObject(ctx, r.BucketName, object.Key+"tx.json", minio.GetObjectOptions{})
+		txData, err := r.Client.GetObject(ctx, r.BucketName, object.Key+TX_FILENAME, minio.GetObjectOptions{})
 		if err != nil {
 			return err
 		}
@@ -763,8 +830,8 @@ func (r *MinioRepository) Rollback(ctx context.Context, tx *schema.Transaction) 
 				} else {
 					// delete it, if the metadata matches
 					// not working: var metaDataRollbackId string = object.UserMetadata[ROLLBACK_ID]
-					var metaDataRollbackId string = object.UserMetadata[MINIO_META_PREFIX+schema.ROLLBACK_ID]
-					if metaDataRollbackId == step.UserMetadata[schema.ROLLBACK_ID] {
+					var metaDataRollbackId string = object.UserMetadata[MINIO_META_PREFIX+schema.TX_ID]
+					if metaDataRollbackId == step.UserMetadata[MINIO_META_PREFIX+schema.TX_ID] {
 						versionIds = append(versionIds, object.VersionID)
 					}
 				}

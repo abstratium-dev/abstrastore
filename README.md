@@ -16,6 +16,8 @@ Acts as an object store rather than a document store, meaning that it doesn't su
 
 Supports database migrations which are implemented as versioned algorithms in your application.
 
+Primary keys must always be unique.
+
 ## Motivation
 
 - Blob storage is much cheaper than an SQL database in the cloud.
@@ -108,9 +110,14 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 - Eventually Consistent by Werner Vogels (2009): https://dl.acm.org/doi/pdf/10.1145/1435417.1435432
 - Notes on distributed databases (1979): https://dominoweb.draco.res.ibm.com/reports/RJ2571.pdf
 - Nice article on MVCC in MySql: https://www.red-gate.com/simple-talk/databases/mysql/exploring-mvcc-and-innodbs-multi-versioning-technique/
+- Article on MVCC in Postgres: https://www.postgresql.org/docs/current/mvcc-intro.html and https://www.postgresql.org/docs/current/transaction-iso.html
+- Article about how MVCC works: https://nagvekar.medium.com/understanding-multi-version-concurrency-control-mvcc-in-postgresql-a-comprehensive-guide-9b4f82153860
 
 ## TODO
 
+- How does t2 avoid reading a non committed version of data from t1 (that started first and has already written data) without reading open txs to know what is not yet committed?  Metadata has tx ids in it, so do listobjects and use tx ids to filter versions (that aren't committed)
+
+- what was this about? Since we always read sll versions when reading, we don't need to store copies in a tx folder. When reading, simply decide what the start timestamp for the tx is, IGNORE any running transactions. Take the lowest timestamp from tx metadata. Not that won't work as we'd ignore other committed txs that commit before us, after the earliest open tx => it was on whatsapp
 - document limitations from https://min.io/docs/minio/linux/operations/concepts/thresholds.html, e.g. field value in index may not be too long
 - rename to abstraDB?
 - how do we delete old indices efficiently? 
