@@ -25,4 +25,4 @@ go.work.sum
 .env
 
 # golang debug binary
-__debug_bin*
+**/__debug_bin*
