@@ -47,8 +47,11 @@ func TestTransactions_StartCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	
-	log.Println("transaction started")
+
+	assert.True(tx.StartMicroseconds < time.Now().UnixMicro())
+	assert.True(tx.TimeoutMicroseconds > time.Now().UnixMicro())
+	assert.True(tx.TimeoutMicroseconds > tx.StartMicroseconds)
+	assert.Equal(tx.TimeoutMicroseconds, tx.StartMicroseconds+10*time.Second.Microseconds())
 
 	// read the transaction
 	var transactions = []schema.Transaction{}
@@ -59,6 +62,7 @@ func TestTransactions_StartCommit(t *testing.T) {
 	assert.Equal(1, len(transactions))
 	assert.Equal(tx.Id, transactions[0].Id)
 	assert.Equal(tx.StartMicroseconds, transactions[0].StartMicroseconds)
+	assert.Equal(tx.TimeoutMicroseconds, transactions[0].TimeoutMicroseconds)
 
 	// end the transaction
 	err = repo.Commit(context.Background(), &tx)
@@ -330,8 +334,78 @@ func TestTransactions_T1StartInsertCommit_T2StartInsert_DuplicateKeyError(t *tes
 	t.Fatal("should fail because object already exists")
 }
 
+func TestTransactions_T1StartInsert_T2StartRead_ShouldNotSeeNonCommittedObject_ButT1StillCan(t *testing.T) {
+
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	tx1, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
+	}
+
+	err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx1)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
+
+	// now make another transaction insert the same row
+	tx2, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx2)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
+
+	// tx2 must not see the object inserted by tx1
+	var accountRead = &Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		assert.True(errors.Is(err, min.NoSuchKeyError))
+		return
+	}
+	t.Fatal("should have failed to read")
+
+	// ///////////////////////////////////////
+	// tx1 can of course still see it!
+	// ///////////////////////////////////////
+	err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(account1, accountRead)
+}
+
 func TestTransactions_TODO(t *testing.T) {
 	assert.Fail(t, "TODO update")
+	assert.Fail(t, "TODO a test with many versions of an object since they haven't been garbage collected yet, and ensure it returns the one for this transaction, rather than a new version that isn't committed yet")
 	assert.Fail(t, "TODO prove that t2 ignores an entry from t1 that isn't committed yet")
 	assert.Fail(t, "TODO update StaleObjectException")
 

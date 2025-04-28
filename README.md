@@ -119,6 +119,7 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 
 - what was this about? Since we always read sll versions when reading, we don't need to store copies in a tx folder. When reading, simply decide what the start timestamp for the tx is, IGNORE any running transactions. Take the lowest timestamp from tx metadata. Not that won't work as we'd ignore other committed txs that commit before us, after the earliest open tx => it was on whatsapp
 - document limitations from https://min.io/docs/minio/linux/operations/concepts/thresholds.html, e.g. field value in index may not be too long
+- improve: min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).SelectFromTable(T_ACCOUNT) => if T_ACCOUNT had a reference to the template, we wouldn't need to provide it in the typed query?
 - rename to abstraDB?
 - how do we delete old indices efficiently? 
   - they are in a path like this: abstrastore-tests/transactions-tests/account/indices/Name/jo/john doe/transactions-tests___account___36ce5121-1a22-4101-b34f-b7063511c0f9

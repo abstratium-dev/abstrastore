@@ -139,7 +139,7 @@ type FindByIndexedFieldContainer[T any] struct {
 // Param: destination - the address of a slice of T, where the results will be stored
 func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) error {
 	coordinates := make([]schema.DatabaseTableIdTuple, 0, 10)
-	if err := f.FindIds(&coordinates); err != nil {
+	if err := f.findIds(&coordinates); err != nil {
 		return err
 	}
 
@@ -183,7 +183,9 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) error {
 	return nil
 }
 
-func (f FindByIndexedFieldContainer[T]) FindIds(destination *[]schema.DatabaseTableIdTuple) error {
+// not public, because without checking metadata of actual files, against transactions in progress, it's not safe to use these.
+// we pass these up, but the caller must ensure that versions exist for this transaction by comparing to others that are in progress
+func (f FindByIndexedFieldContainer[T]) findIds(destination *[]schema.DatabaseTableIdTuple) error {
 	paths, err := f.repo.selectPathsFromTableWhereIndexedFieldEquals(f.ctx, f.tx, f.table, f.field, f.value)
 	if err != nil {
 		return err
@@ -226,50 +228,19 @@ func getById[T any](ctx context.Context, repo *MinioRepository, transaction *sch
 		var t *T = val.(*T)
 		*destination = *t
 	} else {
-		found := false
-		// do not load versions older than the start of the transaction (part of the mvcc principle)
-		for object := range repo.Client.ListObjects(ctx, repo.BucketName, minio.ListObjectsOptions{
-			Prefix: path,
-			WithVersions: true,
-			ReverseVersions: true,
-			WithMetadata: true,
-		}) {
-			if object.Err != nil {
-				return object.Err
+		objectData, err := repo.readObjectVersionForTransaction(ctx, transaction, path)
+		if err != nil {
+			return err
+		}
+		if objectData != nil {
+			if err := json.Unmarshal(*objectData, destination); err != nil {
+				return err
 			}
-
-			if object.LastModified.UnixMicro() < transaction.StartMicroseconds {
-				// read the actual record
-				recordData, err := repo.Client.GetObject(ctx, repo.BucketName, path, minio.GetObjectOptions{})
-				if err != nil {
-					return err
-				}
-				defer recordData.Close()
-			
-				// parse the actual record
-				b, err := io.ReadAll(recordData)
-				if err != nil {
-					respErr := minio.ToErrorResponse(err)
-					if respErr.StatusCode == http.StatusNotFound {
-						return &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
-					} else {
-						return fmt.Errorf("failed to get object with Path %s: %w", path, err)
-					}
-				}
-				if err := json.Unmarshal(b, destination); err != nil {
-					return err
-				}
-				found = true
-				break
-			}	
-		}	
-
-		if !found {
-			return &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
-		} else {
 			// cache the result in case it is read again
 			var a any = destination
 			transaction.Cache[path] = &a
+		} else {
+			return &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
 		}
 	}
 	return nil
@@ -578,7 +549,8 @@ func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx contex
 
 	// TODO cope with deleted index entries?
 
-	// add anything from the cache that matches the path, because those have a LastModified in Minio that is newer than the tx start, but they are still relevant
+	// add anything from the cache that matches the path, because those have a LastModified in Minio that
+	// is newer than the tx start, but they are still relevant
 	for key := range transaction.Cache {
 		if strings.HasPrefix(key, indexPath) {
 			relevantPaths[key] = true
@@ -643,14 +615,14 @@ func (r *MinioRepository) getOtherTransactionsInProgress(ctx context.Context, tx
 
 // Returns the version of the object that was written before the transaction started, i.e. older than the transaction start timestamp.
 // Ignores all versions from transactions that are still in progress.
-func (r *MinioRepository) ReadObjectVersionForTransaction(ctx context.Context, tx *schema.Transaction, table schema.Table, id string) (*[]byte, error) {
-	// TODO move this up a level and require that open transaction IDs are passed in, so that they aren't read multiple times?
+func (r *MinioRepository) readObjectVersionForTransaction(ctx context.Context, tx *schema.Transaction, path string) (*[]byte, error) {
+	// TODO move the following up a level and require that open transaction IDs are passed in, so that they aren't read multiple times?
 	transactionIdsToIgnore := make([]string, 0, 10)
 	transactionsInProgress, err := r.getOtherTransactionsInProgress(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// transactionsInProgress is a map of txId and timeoutMicros
 	// ignore the timeout here and add all txIds that exist, since even though the tx has timed out, 
 	// it hasn't yet rolled back, and such objects shouldn't be visible to other transactions.
@@ -659,31 +631,19 @@ func (r *MinioRepository) ReadObjectVersionForTransaction(ctx context.Context, t
 		transactionIdsToIgnore = append(transactionIdsToIgnore, id)
 	}
 
-	objects := r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
-		Prefix:       table.Path(id), // full path of object we are reading
-		WithVersions: true,           // get version info so that we can find the object with a timestamp before the transaction started
-	})
-
-	// reverse sort
-	// TODO no need to do this, since we can set ReverseVersions to true in the list options
-	var objectsList []minio.ObjectInfo
-	for object := range objects {
-		if object.Err != nil {
-			return nil, object.Err
-		}
-		objectsList = append(objectsList, object)
-	}
-	slices.SortFunc(objectsList, func(a, b minio.ObjectInfo) int {
-		return b.LastModified.Compare(a.LastModified) // oldest first
-	})
-
 	versionToRead := ""
-	for _, object := range objectsList {
+	for object := range r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
+		Prefix:       path, // full path of object we are reading
+		WithVersions: true, // get version info so that we can find the object with a timestamp before the transaction started
+		ReverseVersions: true,
+		WithMetadata: true,
+	}) {
 		if object.Err != nil {
 			return nil, object.Err
 		}
 
-		if object.LastModified.Before(time.UnixMicro(tx.StartMicroseconds)) {
+		objectLastModifiedMicros := object.LastModified.UnixMicro()
+		if objectLastModifiedMicros < tx.StartMicroseconds {
 			// ignore transactions that are still in progress
 			if !slices.Contains(transactionIdsToIgnore, object.UserMetadata[MINIO_META_PREFIX+schema.TX_ID]) {
 				versionToRead = object.VersionID
@@ -693,19 +653,23 @@ func (r *MinioRepository) ReadObjectVersionForTransaction(ctx context.Context, t
 	}
 
 	if versionToRead == "" {
-		return nil, &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", table.Path(id))}
+		return nil, &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
 	}
 
-	// read the object
-	objectData, err := r.Client.GetObject(ctx, r.BucketName, table.Path(id), minio.GetObjectOptions{
+	// read the object using the exact version that we identified as being correct for this transaction
+	objectData, err := r.Client.GetObject(ctx, r.BucketName, path, minio.GetObjectOptions{
 		VersionID: versionToRead,
 	})
 	if err != nil {
-		return nil, err
+		respErr := minio.ToErrorResponse(err)
+		if respErr.StatusCode == http.StatusNotFound {
+			return nil, &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
+		} else {
+			return nil, fmt.Errorf("failed to get object with Path %s: %w", path, err)
+		}
 	}
-	defer objectData.Close()
+defer objectData.Close()
 
-	// parse the actual record
 	b, err := io.ReadAll(objectData)
 	if err != nil {
 		return nil, err
