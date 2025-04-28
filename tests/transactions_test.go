@@ -631,12 +631,6 @@ func TestTransactions_T1StartInsertCommit_T2StartUpdateCommit_CheckObjectAndIndi
 	assert.NotEmpty(updatedEtag)
 	assert.NotEqual(etag, updatedEtag)
 
-	check why old index is still in cache and not removed from minio;
-	how the hell will a second transaction find the old object based on the old index. ah, maybe that is why we dont delete it until commit?
-	how do deleted objects work in minio? when there is no data??
-	work updates out, it aint working yet.
-
-
 	// ///////////////////////////////////////
 	// tx2 commits
 	// ///////////////////////////////////////

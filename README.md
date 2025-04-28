@@ -115,6 +115,12 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 
 ## TODO
 
+-	check why old index is still in cache and not removed from minio;
+-	how the hell will a second transaction find the old object based on the old index. ah, maybe that is why we dont delete it until commit?
+-	how do deleted objects work in minio? when there is no data??
+-	work updates out, it aint working yet.
+
+
 - How does t2 avoid reading a non committed version of data from t1 (that started first and has already written data) without reading open txs to know what is not yet committed?  Metadata has tx ids in it, so do listobjects and use tx ids to filter versions (that aren't committed)
 
 - what was this about? Since we always read sll versions when reading, we don't need to store copies in a tx folder. When reading, simply decide what the start timestamp for the tx is, IGNORE any running transactions. Take the lowest timestamp from tx metadata. Not that won't work as we'd ignore other committed txs that commit before us, after the earliest open tx => it was on whatsapp
