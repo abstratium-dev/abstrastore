@@ -62,7 +62,7 @@ func TestAll(t *testing.T) {
 			t.Fatal(err)
 		}
 		
-		err = repo.InsertIntoTable(context.Background(), &tx, T_ACCOUNT, account1)
+		_, err = repo.InsertIntoTable(context.Background(), &tx, T_ACCOUNT, account1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +107,7 @@ func TestAll(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = repo.InsertIntoTable(context.Background(), &tx, T_ISSUE, issue1)
+		_, err = repo.InsertIntoTable(context.Background(), &tx, T_ISSUE, issue1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,7 +145,7 @@ func TestAll(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = repo.InsertIntoTable(context.Background(), &tx, T_WATCH, watch1_account1_issue1)
+		_, err = repo.InsertIntoTable(context.Background(), &tx, T_WATCH, watch1_account1_issue1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -192,7 +192,7 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Second Account", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), &	schema.Transaction{}, T_ACCOUNT, account2)
+		_, err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_ACCOUNT, account2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -208,7 +208,7 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Second Issue", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_ISSUE, issue2)
+		_, err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_ISSUE, issue2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -229,13 +229,13 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Second and Third Watch", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_WATCH, watch2_account2_issue2)
+		_, err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_WATCH, watch2_account2_issue2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		log.Println("added watch at ", T_WATCH.Path(watch2_account2_issue2.Id))
 
-		err = repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_WATCH, watch3_account1_issue2)
+		_, err = repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_WATCH, watch3_account1_issue2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -364,7 +364,7 @@ func TestAll(t *testing.T) {
 	})
 
 	t.Run("Insert Duplicate Account", func(t *testing.T) {
-		err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_ACCOUNT, account1)
+		_, err := repo.InsertIntoTable(context.Background(), &schema.Transaction{}, T_ACCOUNT, account1)
 		if err == nil {
 			t.Fatal("expected error")
 		}

@@ -97,7 +97,7 @@ func (t *Transaction) GetRootPath() string {
 // Param: InitialETag - the initial ETag of the object, if "" then none is set and a change will always be successful
 // Param: Entity - the object itself
 // Returns: an error if the transaction is not InProgress or has timed out
-func (t *Transaction) AddStep(Type string, ContentType string, Path string, InitialETag string, Entity any) error {
+func (t *Transaction) AddStep(Type string, ContentType string, Path string, InitialETag string, Entity *any) error {
 	if err := t.IsOk(); err != nil {
 		return err
 	}
@@ -130,10 +130,29 @@ func (t *Transaction) AddStep(Type string, ContentType string, Path string, Init
 	}
 	t.Steps = append(t.Steps, &step)
 
+	// insert and update data are added
 	if(Type == "insert-data") {
-		t.Cache[Path] = &Entity
+		t.Cache[Path] = Entity
+	} else if (Type == "update-data") {
+		t.Cache[Path] = Entity
+
+	// insert and new update indices are added
+	// yes, indices are also cached, since we add from the cache when inspecting the index entries
 	} else if (Type == "insert-index") {
-		t.Cache[Path] = &Entity
+		t.Cache[Path] = Entity
+	} else if (Type == "update-insert-index") {
+		t.Cache[Path] = Entity
+
+	// old update indices are removed
+	} else if (Type == "update-delete-index") {
+		t.Cache[Path] = nil
+
+	// reverse indices are not added
+	} else if (Type == "insert-reverse-indices") {
+	} else if (Type == "update-reverse-indices") {
+
+	} else {
+		panic("Invalid transaction step type: " + Type)
 	}
 
 	return nil
@@ -149,7 +168,7 @@ type TransactionStep struct {
 	InitialVersionId string `json:"initialVersionId"`
 	UserMetadata map[string]string `json:"userMetadata"`
 	Data *[]byte `json:"-"`
-	Entity any `json:"-"`
+	Entity *any `json:"-"`
 	Executed bool `json:"executed"`
 
 	FinalETag string `json:"finalEtag"`
