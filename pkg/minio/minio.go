@@ -116,8 +116,8 @@ type WhereContainer[T any] struct {
 	tx       *schema.Transaction
 }
 
-func (w WhereContainer[T]) WhereIndexedFieldEquals(field string, value string) FindByIndexedFieldContainer[T] {
-	return FindByIndexedFieldContainer[T]{w.ctx, w.repo, w.table, w.template, field, value, w.tx}
+func (w WhereContainer[T]) WhereIndexedFieldEquals(fieldName string, value string) FindByIndexedFieldContainer[T] {
+	return FindByIndexedFieldContainer[T]{w.ctx, w.repo, w.table, w.template, fieldName, value, w.tx}
 }
 
 func (w WhereContainer[T]) WhereIdEquals(id string) FindByIdContainer[T] {
@@ -129,7 +129,7 @@ type FindByIndexedFieldContainer[T any] struct {
 	repo     *MinioRepository
 	table    schema.Table
 	template *T
-	field    string
+	fieldName    string
 	value    string
 	tx       *schema.Transaction
 }
@@ -178,7 +178,17 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) error {
 
 	*destination = make([]*T, 0, len(results))
 	for _, result := range results {
-		*destination = append(*destination, result)
+		// need to double check that the object that was loaded actually really matches the predicate.
+		// that is because we cannot fully trust the indices - they still contain old entries in case other transactions
+		// need to find old versions of data, and they contain new entries, which while those should have been skipped
+		// if they belong to transactions that are in progress, it is still better to double check here.
+		fieldValue, err := getFieldValueAsString(result, f.fieldName)
+		if err != nil {
+			return err
+		}
+		if fieldValue == f.value { // TODO other predicates too like regex, <, >, etc.
+			*destination = append(*destination, result)
+		}
 	}
 	return nil
 }
@@ -186,7 +196,7 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) error {
 // not public, because without checking metadata of actual files, against transactions in progress, it's not safe to use these.
 // we pass these up, but the caller must ensure that versions exist for this transaction by comparing to others that are in progress
 func (f FindByIndexedFieldContainer[T]) findIds(destination *[]schema.DatabaseTableIdTuple) error {
-	paths, err := f.repo.selectPathsFromTableWhereIndexedFieldEquals(f.ctx, f.tx, f.table, f.field, f.value)
+	paths, err := f.repo.selectPathsFromTableWhereIndexedFieldEquals(f.ctx, f.tx, f.table, f.fieldName, f.value)
 	if err != nil {
 		return err
 	}
@@ -528,10 +538,10 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 }
 
 // sql: select * from table_name where column1 = value1 (column1 is in an index)
-func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx context.Context, transaction *schema.Transaction, table schema.Table, field string, value string) (*util.MutList[string], error) {
+func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx context.Context, transaction *schema.Transaction, table schema.Table, fieldName string, value string) (*util.MutList[string], error) {
 	matchingPaths := util.NewMutList[string]()
 	// use the index definition to find the path of the actual record containing the data that the caller wants to read
-	index, err := table.GetIndex(field)
+	index, err := table.GetIndex(fieldName)
 	if err != nil {
 		return matchingPaths, err
 	}
@@ -541,6 +551,15 @@ func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx contex
 	relevantPaths := make(map[string]bool) // effectively a set
 
 	errors := util.NewMutList[error]()
+
+	otherTransactionsInProgress, err := r.getOtherTransactionsInProgress(ctx, transaction)
+	if err != nil {
+		return nil, err
+	}
+	transactionIdsToIgnore := make([]string, 0, 10)
+	for id := range otherTransactionsInProgress {
+		transactionIdsToIgnore = append(transactionIdsToIgnore, id)
+	}
 
 	// Goroutine to list objects and send them to the channel
 	listOpts := minio.ListObjectsOptions{
@@ -558,12 +577,13 @@ func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx contex
 				errors.Add(err)
 			}
 			if lastModified < transaction.StartMicroseconds {
-				relevantPaths[object.Key] = true
+				// ignore other transactions that are still in progress
+				if !slices.Contains(transactionIdsToIgnore, object.UserMetadata[MINIO_META_PREFIX+schema.TX_ID]) {
+					relevantPaths[object.Key] = true
+				}
 			}
 		}
 	}
-
-	// TODO cope with deleted index entries?
 
 	// add anything from the cache that matches the path, because those have a LastModified in Minio that
 	// is newer than the tx start, but they are still relevant
@@ -630,7 +650,7 @@ func (r *MinioRepository) getOtherTransactionsInProgress(ctx context.Context, tx
 }
 
 // Returns the version of the object that was written before the transaction started, i.e. older than the transaction start timestamp.
-// Ignores all versions from transactions that are still in progress.
+// Ignores all versions from other transactions that are still in progress.
 func (r *MinioRepository) readObjectVersionForTransaction(ctx context.Context, tx *schema.Transaction, path string) (*[]byte, error) {
 	// TODO move the following up a level and require that open transaction IDs are passed in, so that they aren't read multiple times?
 	transactionIdsToIgnore := make([]string, 0, 10)
@@ -651,7 +671,7 @@ func (r *MinioRepository) readObjectVersionForTransaction(ctx context.Context, t
 	for object := range r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
 		Prefix:       path, // full path of object we are reading
 		WithVersions: true, // get version info so that we can find the object with a timestamp before the transaction started
-		ReverseVersions: true,
+		ReverseVersions: false, // latest first, iterate through the versions and break when we find one that is before the start of the tx and not part of a transaction that is still in progress
 		WithMetadata: true,
 	}) {
 		if object.Err != nil {
@@ -660,7 +680,7 @@ func (r *MinioRepository) readObjectVersionForTransaction(ctx context.Context, t
 
 		objectLastModifiedMicros := object.LastModified.UnixMicro()
 		if objectLastModifiedMicros < tx.StartMicroseconds {
-			// ignore transactions that are still in progress
+			// ignore other transactions that are still in progress
 			if !slices.Contains(transactionIdsToIgnore, object.UserMetadata[MINIO_META_PREFIX+schema.TX_ID]) {
 				versionToRead = object.VersionID
 				break
@@ -693,7 +713,7 @@ defer objectData.Close()
 	return &b, nil
 }
 
-func (r *MinioRepository) StartTransaction(ctx context.Context, timeout time.Duration) (schema.Transaction, error) {
+func (r *MinioRepository) BeginTransaction(ctx context.Context, timeout time.Duration) (schema.Transaction, error) {
 	tx := schema.NewTransaction(timeout)
 	err := r.updateTransaction(ctx, &tx)
 	if err != nil {
@@ -836,7 +856,7 @@ func (r *MinioRepository) Rollback(ctx context.Context, tx *schema.Transaction) 
 		}
 		wg.Wait()
 
-		// TODO do we need to look at the step.Type?
+		// TODO do we need to look at the step.Type? - yes, if something was deleted, we need to return it
 		// TODO how do we deal with deletion, i.e. make the object visible again
 	}
 

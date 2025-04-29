@@ -115,11 +115,15 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 
 ## TODO
 
+- test: update and then select it using indices and id, both should come out of the cache.
+  - the selection with the index is interesting, because we can use the cache. or is that irrelevant since we will read our own index entries from minio even tho they aren't committed?
+- PutObjectFanOut for writing multiple files at the same time? more efficient?
 -	check why old index is still in cache and not removed from minio;
 -	how the hell will a second transaction find the old object based on the old index. ah, maybe that is why we dont delete it until commit?
 -	how do deleted objects work in minio? when there is no data??
 -	work updates out, it aint working yet.
 
+- when committing/rolling back, we could update the file so that the exipiry time is set to in 100ms that way if the process were to die, another instance would very quickly complete the transaction
 
 - How does t2 avoid reading a non committed version of data from t1 (that started first and has already written data) without reading open txs to know what is not yet committed?  Metadata has tx ids in it, so do listobjects and use tx ids to filter versions (that aren't committed)
 
@@ -130,6 +134,7 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 - how do we delete old indices efficiently? 
   - they are in a path like this: abstrastore-tests/transactions-tests/account/indices/Name/jo/john doe/transactions-tests___account___36ce5121-1a22-4101-b34f-b7063511c0f9
   - we need to perhaps store them with the actual object when it is created and updated?
+- test what happens if you update an object that has in the mean time been deleted. should get a StaleObjectError.
 - add update
 - add delete
 - add upsert
@@ -147,6 +152,7 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 - so how is BASE eventually consistent, if it has no transactions?
   - base will keep trying to write to other nodes and so eventually they will be consistent. that isn't the problem we are trying to solve. rather, we don't support transactions and so if a system failure occurs during a set of writes (a process) then the system will not know about the other things that the user wanted to do.  it can however try and ensure that the indexes are up to date with the data, using the mechanism described above which writes a single file containing all intentions, before then executing them.
 - do load and performance tests
+  - check how many concurrent transactions can be handled because we always need to check index and file versions against them in order to ignore non-committed data
 - add using https://pkg.go.dev/about#adding-a-package
 - sql parsing - https://github.com/xwb1989/sqlparser
 - put internal structs into internal package

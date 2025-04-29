@@ -16,13 +16,33 @@ import (
 	"github.com/abstratium-informatique-sarl/abstrastore/pkg/schema"
 )
 
+func setupTest(tb *testing.T) func(tb *testing.T) {
+	log.Println("setup test")
+
+	// Return a function to teardown the test
+	return func(tb *testing.T) {
+		log.Println("teardown test")
+	}
+}
+
+func setupAndTeardown() func() {
+	start := time.Now()
+	log.Println("setup test")
+
+	// Return a function to teardown the test
+	return func() {
+		log.Println("teardown test ", time.Since(start))
+	}
+}
+
 func TestMain(m *testing.M) {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
-
+	log.Println("!!! START TEST MAIN")
 	cleanup()
 
 	m.Run()
 
+	log.Println("!!! END TEST MAIN")
 	os.Exit(0)
 }
 
@@ -38,12 +58,13 @@ func cleanup() {
 	}
 }
 
-func TestTransactions_StartCommit(t *testing.T) {
+func TestTransactions_BeginCommit(t *testing.T) {
+	defer setupAndTeardown()()
 	assert := assert.New(t)
 
 	repo := getRepo()
 
-	tx, err := repo.StartTransaction(context.Background(), 10*time.Second)
+	tx, err := repo.BeginTransaction(context.Background(), 10*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,12 +100,13 @@ func TestTransactions_StartCommit(t *testing.T) {
 	}
 }
 
-func TestTransactions_StartRollback(t *testing.T) {
+func TestTransactions_BeginRollback(t *testing.T) {
+	defer setupAndTeardown()()
 	assert := assert.New(t)
 
 	repo := getRepo()
 
-	tx, err := repo.StartTransaction(context.Background(), 10*time.Second)
+	tx, err := repo.BeginTransaction(context.Background(), 10*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,12 +137,13 @@ func TestTransactions_StartRollback(t *testing.T) {
 
 }
 
-func TestTransactions_StartTimeout(t *testing.T) {
+func TestTransactions_BeginTimeout(t *testing.T) {
+	defer setupAndTeardown()()
 	assert := assert.New(t)
 
 	repo := getRepo()
 
-	tx, err := repo.StartTransaction(context.Background(), 0*time.Second) // <<<<< timed out immediately
+	tx, err := repo.BeginTransaction(context.Background(), 0*time.Second) // <<<<< timed out immediately
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,12 +161,13 @@ func TestTransactions_StartTimeout(t *testing.T) {
 	assert.Equal(schema.TransactionTimedOutError, tx.IsOk())
 }
 
-func TestTransactions_StartInsertCommit(t *testing.T) {
+func TestTransactions_BeginInsertCommit(t *testing.T) {
+	defer setupAndTeardown()()
 	assert := assert.New(t)
 
 	repo := getRepo()
 
-	tx, err := repo.StartTransaction(context.Background(), 10*time.Second)
+	tx, err := repo.BeginTransaction(context.Background(), 10*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,12 +227,13 @@ func TestTransactions_StartInsertCommit(t *testing.T) {
 
 }
 
-func TestTransactions_StartInsertRollback(t *testing.T) {
+func TestTransactions_BeginInsertRollback(t *testing.T) {
+	defer setupAndTeardown()()
 	assert := assert.New(t)
 
 	repo := getRepo()
 
-	tx, err := repo.StartTransaction(context.Background(), 10*time.Second)
+	tx, err := repo.BeginTransaction(context.Background(), 10*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,12 +294,13 @@ func TestTransactions_StartInsertRollback(t *testing.T) {
 // by returning an ObjectLockedError (rather than locking and then failing). It is a signal to the caller that another transaction
 // is about to commit the same object. If the transaction were blocked until the first one finished, it would more than likely 
 // fail with a StaleObjectError.
-func TestTransactions_T1StartInsert_T2StartInsert_ObjectLockedError_BecauseT1IsNotFinished(t *testing.T) {
+func TestTransactions_T1BeginInsert_T2BeginInsert_ObjectLockedError_BecauseT1IsNotFinished(t *testing.T) {
+	defer setupAndTeardown()()
 	assert := assert.New(t)
 
 	repo := getRepo()
 
-	tx1, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +323,7 @@ func TestTransactions_T1StartInsert_T2StartInsert_ObjectLockedError_BecauseT1IsN
 	// ///////////////////////////////////////
 	// tx2
 	// ///////////////////////////////////////
-	tx2, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,12 +357,13 @@ func TestTransactions_T1StartInsert_T2StartInsert_ObjectLockedError_BecauseT1IsN
 	t.Fatal("should fail because object already exists")
 }
 
-func TestTransactions_T1StartInsertCommit_T2StartInsert_DuplicateKeyError(t *testing.T) {
+func TestTransactions_T1BeginInsertCommit_T2BeginInsert_DuplicateKeyError(t *testing.T) {
+	defer setupAndTeardown()()
 	assert := assert.New(t)
 
 	repo := getRepo()
 
-	tx1, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +391,7 @@ func TestTransactions_T1StartInsertCommit_T2StartInsert_DuplicateKeyError(t *tes
 	// ///////////////////////////////////////
 	// tx2
 	// ///////////////////////////////////////
-	tx2, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,13 +416,14 @@ func TestTransactions_T1StartInsertCommit_T2StartInsert_DuplicateKeyError(t *tes
 	t.Fatal("should fail because object already exists")
 }
 
-func TestTransactions_T1StartInsert_T2StartRead_ShouldNotSeeNonCommittedObject_ButT1StillCan(t *testing.T) {
+func TestTransactions_T1BeginInsert_T2BeginRead_ShouldNotSeeNonCommittedObject_ButT1StillCan(t *testing.T) {
+	defer setupAndTeardown()()
 
 	assert := assert.New(t)
 
 	repo := getRepo()
 
-	tx1, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,7 +453,7 @@ func TestTransactions_T1StartInsert_T2StartRead_ShouldNotSeeNonCommittedObject_B
 	// ///////////////////////////////////////
 	// tx2
 	// ///////////////////////////////////////
-	tx2, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,13 +493,13 @@ func TestTransactions_T1StartInsert_T2StartRead_ShouldNotSeeNonCommittedObject_B
 }
 
 // similar to previous test but this time the first transaction must not see the object inserted AND COMMITTED by the second transaction
-func TestTransactions_T1StartInsert_T2StartInsertCommit_T1ShouldNotSeeNonCommittedObjectFromT2(t *testing.T) {
-
+func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommittedObjectFromT2(t *testing.T) {
+	defer setupAndTeardown()()
 	assert := assert.New(t)
 
 	repo := getRepo()
 
-	tx1, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -501,7 +529,7 @@ func TestTransactions_T1StartInsert_T2StartInsertCommit_T1ShouldNotSeeNonCommitt
 	// ///////////////////////////////////////
 	// tx2
 	// ///////////////////////////////////////
-	tx2, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,7 +585,7 @@ func TestTransactions_T1StartInsert_T2StartInsertCommit_T1ShouldNotSeeNonCommitt
 	// ///////////////////////////////////////
 	// tx3 can of course still see it!
 	// ///////////////////////////////////////
-	tx3, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -579,13 +607,13 @@ func TestTransactions_T1StartInsert_T2StartInsertCommit_T1ShouldNotSeeNonCommitt
 	assert.Equal(account2, accountRead)
 }
 
-func TestTransactions_T1StartInsertCommit_T2StartUpdateCommit_CheckObjectAndIndicesAreUpdated(t *testing.T) {
-
+func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndicesAreUpdated(t *testing.T) {
+	defer setupAndTeardown()()
 	assert := assert.New(t)
 
 	repo := getRepo()
 
-	tx1, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -613,7 +641,7 @@ func TestTransactions_T1StartInsertCommit_T2StartUpdateCommit_CheckObjectAndIndi
 	// ///////////////////////////////////////
 	// tx2
 	// ///////////////////////////////////////
-	tx2, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,7 +670,7 @@ func TestTransactions_T1StartInsertCommit_T2StartUpdateCommit_CheckObjectAndIndi
 	// ///////////////////////////////////////
 	// tx3 for reading
 	// ///////////////////////////////////////
-	tx3, err := repo.StartTransaction(context.Background(), 120*time.Second)
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -698,6 +726,9 @@ func TestTransactions_TODO(t *testing.T) {
 	assert.Fail(t, "TODO test rollback works when we were unable to write the final transaction file upon insert")
 	assert.Fail(t, "TODO test that a second transaction doesn't read the newly updated version of a row")
 	assert.Fail(t, "TODO delete")
+	assert.Fail(t, "TODO t1 BeginDelete_T2BeginInsert_FailsWithStaleObject or something because the file still exists")
+	assert.Fail(t, "TODO t1 BeginDelete_T2Begin_T1Commit_T2InsertCommit should work fine")
+
 	assert.Fail(t, "TODO delete and impact on indices")
 	assert.Fail(t, "TODO update and impact on indices")
 	assert.Fail(t, "TODO upsert and impact on indices")

@@ -57,7 +57,7 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Account Including Indices", func(t *testing.T) {
-		tx, err := repo.StartTransaction(context.Background(), 10*time.Second)
+		tx, err := repo.BeginTransaction(context.Background(), 10*time.Second)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,7 +102,7 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Issue", func(t *testing.T) {
-		tx, err := repo.StartTransaction(context.Background(), 10*time.Second)
+		tx, err := repo.BeginTransaction(context.Background(), 10*time.Second)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -140,7 +140,7 @@ func TestAll(t *testing.T) {
 	}
 
 	t.Run("Create Watch", func(t *testing.T) {
-		tx, err := repo.StartTransaction(context.Background(), 10*time.Second)
+		tx, err := repo.BeginTransaction(context.Background(), 10*time.Second)
 		if err != nil {
 			t.Fatal(err)
 		}
