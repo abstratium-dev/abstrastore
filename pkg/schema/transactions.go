@@ -25,7 +25,7 @@ type Transaction struct {
 	// key is path to object; allows the transaction to avoid reading things that it wrote or already read (enabling repeatable reads)
 	Cache map[string]*any `json:"-"`
 
-	// InProgress, Committed, RolledBack
+	// InProgress, Committing, RollingBack
 	State string `json:"state"`
 }
 
@@ -51,9 +51,9 @@ var TransactionAlreadyRolledBackError = fmt.Errorf("Transaction is already rolle
 var TransactionTimedOutError = fmt.Errorf("Transaction has timed out")
 
 func (t *Transaction) IsOk() error {
-	if t.State == "Committed" {
+	if t.State == "Committing" {
 		return TransactionAlreadyCommittedError
-	} else if t.State == "RolledBack" {
+	} else if t.State == "RollingBack" {
 		return TransactionAlreadyRolledBackError
 	} else if t.State != "InProgress" {
 		panic("Transaction is in an unknown state")
@@ -138,13 +138,13 @@ func (t *Transaction) AddStep(Type string, ContentType string, Path string, Init
 
 	// insert and new update indices are added
 	// yes, indices are also cached, since we add from the cache when inspecting the index entries
-	} else if (Type == "insert-index") {
+	} else if (Type == "insert-add-index") {
 		t.Cache[Path] = Entity
-	} else if (Type == "update-insert-index") {
+	} else if (Type == "update-add-index") {
 		t.Cache[Path] = Entity
 
-	// old update indices are removed
-	} else if (Type == "update-delete-index") {
+	// old update indices are removed, because we shouldn't find entries based on old indices, at least not within the current transaction that change the index
+	} else if (Type == "update-remove-index") {
 		t.Cache[Path] = nil
 
 	// reverse indices are not added
@@ -152,7 +152,7 @@ func (t *Transaction) AddStep(Type string, ContentType string, Path string, Init
 	} else if (Type == "update-reverse-indices") {
 
 	} else {
-		panic("Invalid transaction step type: " + Type)
+		return fmt.Errorf("ADB-0003 Unexpected transaction step type %s, please contact abstratrium", Type)
 	}
 
 	return nil

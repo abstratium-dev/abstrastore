@@ -292,7 +292,7 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 		}
 
 		 // ETag: "*" - fail if the object already exists, since this is an insert not an upsert. if someone beat us to it, that would mean a conflict
-		err = transaction.AddStep("insert-index", "text/plain", index.Path(value, id), "*", nil)
+		err = transaction.AddStep("insert-add-index", "text/plain", index.Path(value, id), "*", nil)
 		if err != nil {
 			return "", err
 		}
@@ -395,7 +395,7 @@ func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.T
 		indexPath := index.Path(value, id)
 		if !slices.Contains(existingIndices, indexPath) {
 			// ETag: "" - we need to overwrite
-			err = transaction.AddStep("update-insert-index", "text/plain", indexPath, "", nil)
+			err = transaction.AddStep("update-add-index", "text/plain", indexPath, "", nil)
 			if err != nil {
 				return "", err
 			}
@@ -410,7 +410,7 @@ func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.T
 	for _, existingIndex := range existingIndices {
 		if !slices.Contains(newIndices, existingIndex) {
 			// ETag: "" - not relevant for deletion
-			err = transaction.AddStep("update-delete-index", "text/plain", existingIndex, "", nil)
+			err = transaction.AddStep("update-remove-index", "text/plain", existingIndex, "", nil)
 			if err != nil {
 				return "", err
 			}
@@ -477,18 +477,28 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 		} else {
 			opts.SetMatchETag(transactionStep.InitialETag)
 		}
+
+		/* TODO unsure if we can set ETag requirements per key?
+		fanOutReq := minio.PutObjectFanOutRequest{
+			Entries: []minio.PutObjectFanOutEntry{
+
+			},
+		}
+		r.Client.PutObjectFanOut(ctx, r.BucketName, a, fanOutReq)
+		TODO unsure what "a" should be
+		TODO cannot remove with this request, can only put
+		*/
 	
-		if strings.Contains(transactionStep.Type, "delete") {
-			opts := minio.RemoveObjectOptions{
-			}
-			if transactionStep.InitialVersionId != "" {
-				opts.VersionID = transactionStep.InitialVersionId
-			}
-			err := r.Client.RemoveObject(ctx, r.BucketName, transactionStep.Path, opts)
-			if err != nil {
-				return "", err
-			}
-		} else { // insert/update
+		if transactionStep.Type == "update-remove-index" {
+			// left for the time being, removed on commit.
+			// that way, other transactions can still find the object based on the old index entries.i.e. snapshot isolation.
+		} else if transactionStep.Type == "insert-data" || // create new object
+				  transactionStep.Type == "insert-add-index" || // create new object
+				  transactionStep.Type == "insert-reverse-indices" || // create new object
+				  transactionStep.Type == "update-data" || // create new object
+				  transactionStep.Type == "update-add-index" || // create new object
+				  transactionStep.Type == "update-reverse-indices" { // create new object
+
 			uploadInfo, err := r.Client.PutObject(ctx, r.BucketName, transactionStep.Path, bytes.NewReader(*transactionStep.Data), int64(len(*transactionStep.Data)), opts)
 			if err != nil {
 				respErr := minio.ToErrorResponse(err)
@@ -524,6 +534,7 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 				return "", fmt.Errorf("failed to put object with Id %s to path %s: %w", id, transactionStep.Path, err)
 			}
 	
+			// update, so that commit/rollback can be more efficient
 			transactionStep.FinalETag = uploadInfo.ETag
 			transactionStep.FinalVersionId = uploadInfo.VersionID
 			transactionStep.Executed = true
@@ -531,6 +542,8 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 			if executedStepCount == indexOfStepForWhichToReturnETag {
 				etag = transactionStep.FinalETag
 			}
+		} else {
+			return etag, fmt.Errorf("ADB-0001 Unexpected transaction step %s, please contact abstratium", transactionStep.Type)
 		}
 	}
 
@@ -787,23 +800,46 @@ func (r *MinioRepository) GetTransactionsInProgress(ctx context.Context, transac
 	return nil
 }
 
-func (r *MinioRepository) Commit(ctx context.Context, tx *schema.Transaction) error {
-	tx.State = "Committed"
+func (r *MinioRepository) Commit(ctx context.Context, tx *schema.Transaction) []error {
+	errs := make([]error, 0, 10) // remove as much as possible
+	tx.State = "Committing"
 	err := r.updateTransaction(ctx, tx) // store in case this process fails and needs recovering
 	if err != nil {
-		return err
+		errs = append(errs, fmt.Errorf("ADB-0004 Failed to update tx file %s during commit. %w", tx.GetPath(), err))
+		return errs // fail fast
 	}
 
-	// delete the transaction
-	governanceBypass := true // transactions are not subject to governance
-	if err := r.DeleteFolder(ctx, tx.GetPath(), governanceBypass, true); err != nil {
-		return err
+	// go through each transaction step in reverse order and delete exactly that version
+	for i := len(tx.Steps) - 1; i >= 0; i-- {
+		step := tx.Steps[i]
+
+		if step.Type == "update-remove-index" {
+			opts := minio.RemoveObjectOptions{
+				ForceDelete: true,
+				GovernanceBypass: true,
+			}
+			if step.InitialVersionId != "" {
+				opts.VersionID = step.InitialVersionId
+			}
+			err := r.Client.RemoveObject(ctx, r.BucketName, step.Path, opts)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("ADB-0005 Failed to remove object at path %s, %w", step.Path, err))
+			}
+		} // else no others are touched during commit
 	}
-	return nil
+
+	if len(errs) == 0 {
+		// delete the transaction
+		governanceBypass := true // transactions are not subject to governance
+		if err := r.DeleteFolder(ctx, tx.GetPath(), governanceBypass, true); err != nil {
+			errs = append(errs, fmt.Errorf("ADB-0006 Failed to remove tx during commit %s, %w", tx.GetPath(), err))
+		}
+	}
+	return errs
 }
 
 func (r *MinioRepository) Rollback(ctx context.Context, tx *schema.Transaction) []error {
-	tx.State = "RolledBack"
+	tx.State = "RollingBack"
 	err := r.updateTransaction(ctx, tx) // store in case this process fails and needs recovering
 	if err != nil {
 		return []error{err}
@@ -814,57 +850,75 @@ func (r *MinioRepository) Rollback(ctx context.Context, tx *schema.Transaction) 
 	for i := len(tx.Steps) - 1; i >= 0; i-- {
 		step := tx.Steps[i]
 
-		versionIds := make([]string, 0, 10) // ok, there really should only ever be one version, but let's be paranoid in the case that we were unable to update the transaction after putting objects
-		if step.FinalVersionId != "" {
-			versionIds = append(versionIds, step.FinalVersionId)
-		}
-
-		if len(versionIds) == 0 {
-			for object := range r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
-				Prefix: step.Path,
-				WithVersions: true,
-				WithMetadata: true,
-			}) {
-				if object.Err != nil {
-					errs = append(errs, object.Err)
-				} else {
-					// delete it, if the metadata matches
-					// not working: var metaDataRollbackId string = object.UserMetadata[ROLLBACK_ID]
-					var metaDataRollbackId string = object.UserMetadata[MINIO_META_PREFIX+schema.TX_ID]
-					if metaDataRollbackId == step.UserMetadata[MINIO_META_PREFIX+schema.TX_ID] {
-						versionIds = append(versionIds, object.VersionID)
+		if step.Type == "insert-data" || // remove the newly inserted version of the object
+		   step.Type == "insert-reverse-indices" || // exists for the object key, containing the current list of index files - remove version that was added
+		   step.Type == "update-data" || // remove the version that was updated
+		   step.Type == "update-reverse-indices" { // exists for the object key, containing the current list of index files - remove version that was added
+			
+			versionIds := make([]string, 0, 10) // ok, there really should only ever be one version, but let's be paranoid in the case that we were unable to update the transaction after putting objects
+			if step.FinalVersionId != "" {
+				versionIds = append(versionIds, step.FinalVersionId)
+			}
+	
+			if len(versionIds) == 0 {
+				// we were unable to update the transaction file, but, we can search for anything with the transactionId in the metadata and delete that, because that metadata was added by before we knew the version number
+				for object := range r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
+					Prefix: step.Path,
+					WithVersions: true,
+					WithMetadata: true,
+				}) {
+					if object.Err != nil {
+						errs = append(errs, fmt.Errorf("ADB-0007 Error listing objects on path %s during rollback of tx %s, %w", step.Path, tx.GetPath(), object.Err))
+					} else {
+						// delete it, if the metadata matches
+						// not working: var metaDataTxId string = object.UserMetadata[schema.TX_ID]
+						var metaDataTxId string = object.UserMetadata[MINIO_META_PREFIX+schema.TX_ID]
+						if metaDataTxId == step.UserMetadata[MINIO_META_PREFIX+schema.TX_ID] {
+							versionIds = append(versionIds, object.VersionID)
+						}
 					}
 				}
 			}
-		}
+	
+			var wg sync.WaitGroup
+			wg.Add(len(versionIds))
+			var mu sync.Mutex
+			for _, versionId := range versionIds { // yeah, normally there is one. but just in case we ever had more...
+				go func(versionId string) {
+					defer wg.Done()
+					err := r.Client.RemoveObject(ctx, r.BucketName, step.Path, minio.RemoveObjectOptions{
+						VersionID: versionId,
+					})
+					if err != nil {
+						mu.Lock()
+						defer mu.Unlock()
+						errs = append(errs, fmt.Errorf("ADB-0008 Failed to remove object at path %s during rollback of tx %s, %w", step.Path, tx.GetPath(), err))
+					}
+				}(versionId)
+			}
+			wg.Wait()
+		} else if step.Type == "insert-add-index" || // index files either exist, or they don't. they have no versioned content.
+		          step.Type == "update-add-index" { // index files either exist, or they don't. they have no versioned content.
 
-		var wg sync.WaitGroup
-		wg.Add(len(versionIds))
-		var mu sync.Mutex
-		for _, versionId := range versionIds {
-			go func(versionId string) {
-				defer wg.Done()
-				err := r.Client.RemoveObject(ctx, r.BucketName, step.Path, minio.RemoveObjectOptions{
-					VersionID: versionId,
-				})
-				if err != nil {
-					mu.Lock()
-					defer mu.Unlock()
-					errs = append(errs, err)
-				}
-			}(versionId)
+			err := r.Client.RemoveObject(ctx, r.BucketName, step.Path, minio.RemoveObjectOptions{
+				ForceDelete: true,
+				GovernanceBypass: true,
+			})
+			if err != nil {
+				errs = append(errs, fmt.Errorf("ADB-0009 Failed to remove object at path %s during rollback of tx %s, %w", step.Path, tx.GetPath(), err))
+			}
+		} else if step.Type == "update-remove-index" {
+			// not used during rollback
+		} else {
+			errs = append(errs, fmt.Errorf("ADB-0002 Unexpected transaction step type %s, please contact abstratium", step.Type))
 		}
-		wg.Wait()
-
-		// TODO do we need to look at the step.Type? - yes, if something was deleted, we need to return it
-		// TODO how do we deal with deletion, i.e. make the object visible again
 	}
 
 	if len(errs) == 0 {
 		governanceBypass := true // transactions are not subject to governance
 		err := r.DeleteFolder(ctx, tx.GetPath(), governanceBypass, true)
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("ADB-0010 Failed to remove tx during rollback %s, %w", tx.GetPath(), err))
 		}
 	}
 

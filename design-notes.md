@@ -48,10 +48,12 @@ Ahh, we could put the target of the index in the file and if it's deleted, clear
 
 ```
 INSERT
-/db/t/data/id.json                        <<< write file
-/db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< write file
-/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< write file
-/db/t/data/id.indices                     <<< write file, used to delete old index entries
+/db/t/data/id.json                        <<< write file, step=insert-data, cached
+/db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< write file, step=insert-index, cached
+/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< write file, step=insert-index, cached
+/db/t/data/id.indices                     <<< write file, used to delete old index entries, step=insert-reverse-indices
+
+describe what gets cached.
 
 ROLLBACK INSERT
 /db/t/data/id.json                        <<< delete the version of this file
@@ -66,10 +68,10 @@ COMMIT INSERT
 /db/t/data/id.indices                     <<< nothing to do
 
 UPDATE (field value of field name 2 changes)
-/db/t/data/id.json                        <<< write new version of file
+/db/t/data/id.json                        <<< write new version of file, step=update-data, cached
 /db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< leave this file alone, the field value didn't change
-/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< leave this for the moment, since other txs must still find using old value
-/db/t/indices/fn2/fv'[:2]/fv'/db___t___id <<< write file (the field value changed and this is the new index entry)**
+/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< leave this for the moment, since other txs must still find using old value. step=update-remove-index, de-cached
+/db/t/indices/fn2/fv'[:2]/fv'/db___t___id <<< write file (the field value changed and this is the new index entry)**, step=update-add-index, cached
 /db/t/data/id.indices                     <<< write new version of file containing new indices that would need modifying on UD*
 
 * should it contain just fn1/fv and fn2/fv', or all three and be updated on commit? the nice thing is that no one else can see the latest version of the actual object and so they cannot get its etag and so they cannot update it. the only one able to update it again is the current transaction. the version of the actual object with the updated field cannot be selected because it's not committed yet and that version belongs to an open transaction and so will be ignored by all other transactions.
@@ -80,13 +82,13 @@ ROLLBACK UPDATE
 /db/t/data/id.json                        <<< delete the newly created version of this file
 /db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< no need to do anything
 /db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< no need to do anything
-/db/t/indices/fn2/fv'[:2]/fv'/db___t___id <<< remove this
+/db/t/indices/fn2/fv'[:2]/fv'/db___t___id <<< remove this, step=update-add-index
 /db/t/data/id.indices                     <<< remove updated version of file
 
 COMMIT UPDATE
 /db/t/data/id.json                        <<< no need to do anything
 /db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< no need to do anything
-/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< remove this
+/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< remove this now, step=update-remove-index, see above
 /db/t/indices/fn2/fv'[:2]/fv'/db___t___id <<< no need to do anything
 /db/t/data/id.indices                     <<< no need to do anything
 

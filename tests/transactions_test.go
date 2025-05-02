@@ -86,9 +86,9 @@ func TestTransactions_BeginCommit(t *testing.T) {
 	assert.Equal(tx.TimeoutMicroseconds, transactions[0].TimeoutMicroseconds)
 
 	// commit the transaction
-	err = repo.Commit(context.Background(), &tx)
-	if err != nil {
-		t.Fatal(err)
+	errs := repo.Commit(context.Background(), &tx)
+	if len(errs) != 0 {
+		t.Fatal(errs)
 	}
 
 	assert.Equal(schema.TransactionAlreadyCommittedError, tx.IsOk())
@@ -187,9 +187,9 @@ func TestTransactions_BeginInsertCommit(t *testing.T) {
 	}
 	assert.NotEmpty(etag)
 
-	err = repo.Commit(context.Background(), &tx)
-	if err != nil {
-		t.Fatal(err)
+	errs := repo.Commit(context.Background(), &tx)
+	if len(errs) != 0 {
+		t.Fatal(errs)
 	}
 
 	// //////////////////////////////////////////////////////////////////////////////
@@ -383,9 +383,9 @@ func TestTransactions_T1BeginInsertCommit_T2BeginInsert_DuplicateKeyError(t *tes
 	}
 	assert.NotEmpty(etag)
 
-	err = repo.Commit(context.Background(), &tx1)
-	if err != nil {
-		t.Fatal(err)
+	errs := repo.Commit(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
 	}
 
 	// ///////////////////////////////////////
@@ -550,9 +550,9 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	// ///////////////////////////////////////
 	// tx2 commits
 	// ///////////////////////////////////////
-	err = repo.Commit(context.Background(), &tx2)
-	if err != nil {
-		t.Fatal(err)
+	errs := repo.Commit(context.Background(), &tx2)
+	if len(errs) != 0 {
+		t.Fatal(errs)
 	}
 
 	// //////////////////////////////////////////////////////////////////////////////
@@ -633,9 +633,9 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	}
 	assert.NotEmpty(etag)
 
-	err = repo.Commit(context.Background(), &tx1)
-	if err != nil {
-		t.Fatal(err)
+	errs := repo.Commit(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
 	}
 
 	// ///////////////////////////////////////
@@ -662,9 +662,9 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	// ///////////////////////////////////////
 	// tx2 commits
 	// ///////////////////////////////////////
-	err = repo.Commit(context.Background(), &tx2)
-	if err != nil {
-		t.Fatal(err)
+	errs = repo.Commit(context.Background(), &tx2)
+	if len(errs) != 0 {
+		t.Fatal(errs)
 	}
 
 	// ///////////////////////////////////////
@@ -715,6 +715,116 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	}
 	assert.Equal(account1, accountRead)
 
+}
+
+func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIndicesAreOriginal(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
+	}
+
+	var etag string
+	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag)
+
+	errs := repo.Commit(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 update
+	// ///////////////////////////////////////
+	var oldName = account1.Name
+	account1.Name = "Jane Doe Updated " + tx2.Id
+	var newName = account1.Name
+	var updatedEtag string
+	updatedEtag, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, etag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(updatedEtag)
+	assert.NotEqual(etag, updatedEtag)
+
+	// ///////////////////////////////////////
+	// tx2 rollsback
+	// ///////////////////////////////////////
+	errs = repo.Rollback(context.Background(), &tx2)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 for reading
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// cannot see object using new index entry
+	// ///////////////////////////////////////
+	var accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", newName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// can see object using old index entry
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", oldName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*accountsRead))
+	assert.Equal(&Account{Id: account1.Id, Name: oldName}, (*accountsRead)[0])
+
+	// ///////////////////////////////////////
+	// can see object using id
+	// ///////////////////////////////////////
+	var accountRead = &Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(&Account{Id: account1.Id, Name: oldName}, accountRead)
 }
 
 func TestTransactions_TODO(t *testing.T) {

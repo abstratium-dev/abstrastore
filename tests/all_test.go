@@ -67,9 +67,9 @@ func TestAll(t *testing.T) {
 			t.Fatal(err)
 		}
 		panic("TODO fix all of the tests in this file, with regards to transactions")
-		err = repo.Commit(context.Background(), &tx)
-		if err != nil {
-			t.Fatal(err)
+		errs := repo.Commit(context.Background(), &tx)
+		if len(errs) != 0 {
+			t.Fatal(errs)
 		}
 		
 		log.Println("added account at ", T_ACCOUNT.Path(account1.Id))
