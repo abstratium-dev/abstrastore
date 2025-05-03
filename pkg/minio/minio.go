@@ -355,6 +355,7 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 // sql: update table_name set everything where id = ?
 // does an optimistically locked update on an entity.
 // If the ETag is wrong this method returns a StaleObjectError.
+// If the ETag is * which we interpret as meaning the object should not exist, but it does, then we return ObjectLockedError.
 // If the object doesn't exist this method returns a NoSuchKeyError.
 func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any, etag *string) (*string, error) {
 	var err error

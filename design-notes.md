@@ -39,12 +39,13 @@ If an update or delete of an object causes the index to change, we cannot just d
 the transaction isn't yet committed, and once removed, the object is really missing from Minio. Not only that, but
 other transactions still need to be able to find objects using those old index entries.
 
-TODO A better solution is to add indices, but only remove old once at the end of the transaction?
-This should work, because any time that an object is read, we use the version that existed at the start of the transaction or null
-if the object was only created after the transaction started.
+A better solution is to add indices, but only remove old once at the end of the transaction?
+This should work, because any time that an object is read, we use the version that existed at the start of the transaction or null if the object was only created after the transaction started.
 Wait though... if I find an object using the new index, but that isn't committed, I would need to read the version of the object matching my transaction start time, and then determine that that version didn't actually match because its field was different.
 That too forces us to always load the full object, not just its ID or header (e.g. from ListObject).
 Ahh, we could put the target of the index in the file and if it's deleted, clear the contents like a tombstone. that way, when reading the index, you need to also look at the size of the file to determine if it's still valid.  alternatively we could write new version of the old index file to indicate that it is deleted, e.g. with metadata, e.g. DeletedWithTxId.  if a transaction determines that that tx is still active, it knows to ignore that index entry. commit then needs to actually remove that file.
+
+Hold on, let's work out what needs doing when:
 
 ```
 INSERT

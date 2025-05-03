@@ -39,7 +39,13 @@ func (e *NoSuchKeyErrorWithDetails) Unwrap() error {
 }
 
 // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Stale Object Error - means that a newer version of the object has already been written by a different transaction
+// Stale Object Error - means that a newer version of the object has already been written by a different transaction.
+// That transaction may not be committed - which sort of means that this is a phantom read, however, instead
+// of blocking the read like an SQL database does, we assume that most of the time, the transaction will 
+// commit, as that is the goal and rollbacks are nasty for users. So, assuming that most transactions will
+// commit, that would mean that the version that the current transaction has read will not be able to be 
+// committed and so instead of blocking and then failing, we just fail fast. Oh, and Minio doesn't support 
+// blocking and we don't want to do polling since that is nasty (inpeformant) too.
 // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 var StaleObjectError = fmt.Errorf("object is stale")
 
