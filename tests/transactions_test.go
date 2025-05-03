@@ -827,7 +827,400 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	assert.Equal(&Account{Id: account1.Id, Name: oldName}, accountRead)
 }
 
+func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
+	}
+
+	var etag string
+	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag)
+
+	// ///////////////////////////////////////
+	// update 1
+	// ///////////////////////////////////////
+	var oldName = account1.Name
+	account1.Name = "Jane Doe Updated " + tx1.Id
+	var middleName = account1.Name
+	var updatedEtag string
+	updatedEtag, err = repo.UpdateTable(context.Background(), &tx1, T_ACCOUNT, account1, etag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(updatedEtag)
+	assert.NotEqual(etag, updatedEtag)
+
+	// ///////////////////////////////////////
+	// update 2
+	// ///////////////////////////////////////
+	account1.Name = "Jane Doe Updated Final"
+	var finalName = account1.Name
+	var updatedEtag2 string
+	updatedEtag2, err = repo.UpdateTable(context.Background(), &tx1, T_ACCOUNT, account1, updatedEtag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(updatedEtag2)
+	assert.NotEqual(updatedEtag, updatedEtag2)
+
+	// ///////////////////////////////////////
+	// commit
+	// ///////////////////////////////////////
+	errs := repo.Commit(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 for reading
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx2)
+
+	// ///////////////////////////////////////
+	// cannot see object using old index entry
+	// ///////////////////////////////////////
+	var accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", oldName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// cannot see object using middle index entry
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", middleName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// can see object using final index entry
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", finalName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*accountsRead))
+	assert.Equal(&Account{Id: account1.Id, Name: finalName}, (*accountsRead)[0])
+
+	// ///////////////////////////////////////
+	// can see object using id
+	// ///////////////////////////////////////
+	var accountRead = &Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(&Account{Id: account1.Id, Name: finalName}, accountRead)
+}
+
+func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
+	}
+
+	var etag string
+	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag)
+
+	// ///////////////////////////////////////
+	// update 1
+	// ///////////////////////////////////////
+	var oldName = account1.Name
+	account1.Name = "Jane Doe Updated " + tx1.Id
+	var middleName = account1.Name
+	var updatedEtag string
+	updatedEtag, err = repo.UpdateTable(context.Background(), &tx1, T_ACCOUNT, account1, etag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(updatedEtag)
+	assert.NotEqual(etag, updatedEtag)
+
+	// ///////////////////////////////////////
+	// update 2
+	// ///////////////////////////////////////
+	account1.Name = "Jane Doe Updated again " + tx1.Id
+	var finalName = account1.Name
+	var updatedEtag2 string
+	updatedEtag2, err = repo.UpdateTable(context.Background(), &tx1, T_ACCOUNT, account1, updatedEtag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(updatedEtag2)
+	assert.NotEqual(updatedEtag, updatedEtag2)
+
+	// ///////////////////////////////////////
+	// rollback
+	// ///////////////////////////////////////
+	errs := repo.Rollback(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 for reading
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx2)
+
+	// ///////////////////////////////////////
+	// cannot see object using middle index entry
+	// ///////////////////////////////////////
+	var accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", middleName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// cannot see object using new index entry
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", finalName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// cannot see object using old index entry
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", oldName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// cannot see object using id
+	// ///////////////////////////////////////
+	var accountRead = &Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		assert.True(errors.Is(err, min.NoSuchKeyError))
+		return
+	}
+	t.Fatal("no error was returned")
+}
+
+func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleUpdates(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
+	}
+
+	var etag string
+	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag)
+
+	// ///////////////////////////////////////
+	// commit
+	// ///////////////////////////////////////
+	errs := repo.Commit(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 for update 1
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// update 1
+	// ///////////////////////////////////////
+	var oldName = account1.Name
+	account1.Name = "Jane Doe Updated " + tx2.Id
+	var middleName = account1.Name
+	var updatedEtag string
+	updatedEtag, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, etag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(updatedEtag)
+	assert.NotEqual(etag, updatedEtag)
+
+	// ///////////////////////////////////////
+	// update 2
+	// ///////////////////////////////////////
+	account1.Name = "Jane Doe Updated again " + tx2.Id
+	var finalName = account1.Name
+	var updatedEtag2 string
+	updatedEtag2, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, updatedEtag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(updatedEtag2)
+	assert.NotEqual(updatedEtag, updatedEtag2)
+
+	// ///////////////////////////////////////
+	// rollback
+	// ///////////////////////////////////////
+	errs = repo.Rollback(context.Background(), &tx2)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 for reading
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx3)
+
+	// ///////////////////////////////////////
+	// cannot see object using middle index entry
+	// ///////////////////////////////////////
+	var accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", middleName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// cannot see object using new index entry
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", finalName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// can see object using old index entry
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", oldName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*accountsRead))
+	assert.Equal(&Account{Id: account1.Id, Name: oldName}, (*accountsRead)[0])
+
+	// ///////////////////////////////////////
+	// can see object using id
+	// ///////////////////////////////////////
+	var accountRead = &Account{}
+	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(&Account{Id: account1.Id, Name: oldName}, accountRead)
+}
+
 func TestTransactions_TODO(t *testing.T) {
+	assert.Fail(t, "TODO update by second tx should fail fast before it gets around to writing reverse indices, otherwise that would screw things up")
+	assert.Fail(t, "TODO update twice, are updates by any other txs affected by tx1 having not added indices that are to be deleted, to reverse indices?")
+	assert.Fail(t, "TODO update with two fields to ensure that one is left intact")
+	assert.Fail(t, "TODO 2xupdate rollback")
+	assert.Fail(t, "TODO update, check tx1 can only see updated version, if using id or index; ensure new tx2 cannot see new version")
 	assert.Fail(t, "TODO update")
 	assert.Fail(t, "TODO need to return etags of objects that are read, or optionally provide a map which is filled with etag per id?")
 	assert.Fail(t, "TODO a test with many versions of an object since they haven't been garbage collected yet, and ensure it returns the one for this transaction, rather than a new version that isn't committed yet")

@@ -459,6 +459,7 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 		if transactionStep.Executed {
 			continue
 		} else {
+			transactionStep.Executed = true
 			executedStepCount++
 		}
 
@@ -537,7 +538,6 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 			// update, so that commit/rollback can be more efficient
 			transactionStep.FinalETag = uploadInfo.ETag
 			transactionStep.FinalVersionId = uploadInfo.VersionID
-			transactionStep.Executed = true
 
 			if executedStepCount == indexOfStepForWhichToReturnETag {
 				etag = transactionStep.FinalETag
