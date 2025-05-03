@@ -180,7 +180,7 @@ func TestTransactions_BeginInsertCommit(t *testing.T) {
 		Name: "John Doe " + tx.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestTransactions_BeginInsertCommit(t *testing.T) {
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountsRead = []*Account{}
 	tx = schema.NewTransaction(10*time.Second)
-	err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(&accountsRead)
@@ -214,7 +214,7 @@ func TestTransactions_BeginInsertCommit(t *testing.T) {
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountRead = &Account{}
 	tx = schema.NewTransaction(10*time.Second)
-	err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -246,7 +246,7 @@ func TestTransactions_BeginInsertRollback(t *testing.T) {
 		Name: "John Doe " + tx.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -263,7 +263,7 @@ func TestTransactions_BeginInsertRollback(t *testing.T) {
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountsRead = []*Account{}
 	tx = schema.NewTransaction(10*time.Second)
-	err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(&accountsRead)
@@ -279,7 +279,7 @@ func TestTransactions_BeginInsertRollback(t *testing.T) {
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountRead = &Account{}
 	tx = schema.NewTransaction(10*time.Second)
-	err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -313,7 +313,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsert_ObjectLockedError_BecauseT1IsN
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -376,7 +376,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginInsert_DuplicateKeyError(t *tes
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -436,7 +436,7 @@ func TestTransactions_T1BeginInsert_T2BeginRead_ShouldNotSeeNonCommittedObject_B
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -469,7 +469,7 @@ func TestTransactions_T1BeginInsert_T2BeginRead_ShouldNotSeeNonCommittedObject_B
 	// tx2 must not see the object inserted by tx1
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -482,7 +482,7 @@ func TestTransactions_T1BeginInsert_T2BeginRead_ShouldNotSeeNonCommittedObject_B
 	// ///////////////////////////////////////
 	// tx1 can of course still see it!
 	// ///////////////////////////////////////
-	err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -512,7 +512,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -559,7 +559,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	// tx1 must not see the committed object inserted by tx2, by id
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountRead = &Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account2.Id).
 		Find(accountRead)
@@ -573,7 +573,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	// tx1 must not see the committed object inserted by tx2, by index
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account2.Name).
 		Find(accountsRead)
@@ -597,7 +597,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 		}
 	}()
 
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -626,7 +626,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -651,7 +651,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	// ///////////////////////////////////////
 	var oldName = account1.Name
 	account1.Name = "Jane Doe Updated " + tx2.Id
-	var updatedEtag string
+	var updatedEtag *string
 	updatedEtag, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, etag)
 	if err != nil {
 		t.Fatal(err)
@@ -679,7 +679,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	// cannot see object using old index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -692,7 +692,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	// can see object using new index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(accountsRead)
@@ -706,7 +706,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	// can see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -736,7 +736,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -762,7 +762,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	var oldName = account1.Name
 	account1.Name = "Jane Doe Updated " + tx2.Id
 	var newName = account1.Name
-	var updatedEtag string
+	var updatedEtag *string
 	updatedEtag, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, etag)
 	if err != nil {
 		t.Fatal(err)
@@ -790,7 +790,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	// cannot see object using new index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", newName).
 		Find(accountsRead)
@@ -803,7 +803,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	// can see object using old index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -817,7 +817,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	// can see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -846,7 +846,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -859,7 +859,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	var oldName = account1.Name
 	account1.Name = "Jane Doe Updated " + tx1.Id
 	var middleName = account1.Name
-	var updatedEtag string
+	var updatedEtag *string
 	updatedEtag, err = repo.UpdateTable(context.Background(), &tx1, T_ACCOUNT, account1, etag)
 	if err != nil {
 		t.Fatal(err)
@@ -872,7 +872,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	// ///////////////////////////////////////
 	account1.Name = "Jane Doe Updated Final"
 	var finalName = account1.Name
-	var updatedEtag2 string
+	var updatedEtag2 *string
 	updatedEtag2, err = repo.UpdateTable(context.Background(), &tx1, T_ACCOUNT, account1, updatedEtag)
 	if err != nil {
 		t.Fatal(err)
@@ -901,7 +901,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	// cannot see object using old index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -914,7 +914,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	// cannot see object using middle index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", middleName).
 		Find(accountsRead)
@@ -927,7 +927,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	// can see object using final index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", finalName).
 		Find(accountsRead)
@@ -941,7 +941,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	// can see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -970,7 +970,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -983,7 +983,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	var oldName = account1.Name
 	account1.Name = "Jane Doe Updated " + tx1.Id
 	var middleName = account1.Name
-	var updatedEtag string
+	var updatedEtag *string
 	updatedEtag, err = repo.UpdateTable(context.Background(), &tx1, T_ACCOUNT, account1, etag)
 	if err != nil {
 		t.Fatal(err)
@@ -996,7 +996,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	// ///////////////////////////////////////
 	account1.Name = "Jane Doe Updated again " + tx1.Id
 	var finalName = account1.Name
-	var updatedEtag2 string
+	var updatedEtag2 *string
 	updatedEtag2, err = repo.UpdateTable(context.Background(), &tx1, T_ACCOUNT, account1, updatedEtag)
 	if err != nil {
 		t.Fatal(err)
@@ -1025,7 +1025,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	// cannot see object using middle index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", middleName).
 		Find(accountsRead)
@@ -1038,7 +1038,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	// cannot see object using new index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", finalName).
 		Find(accountsRead)
@@ -1051,7 +1051,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	// cannot see object using old index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -1064,7 +1064,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	// cannot see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -1094,7 +1094,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
-	var etag string
+	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
 		t.Fatal(err)
@@ -1123,7 +1123,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	var oldName = account1.Name
 	account1.Name = "Jane Doe Updated " + tx2.Id
 	var middleName = account1.Name
-	var updatedEtag string
+	var updatedEtag *string
 	updatedEtag, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, etag)
 	if err != nil {
 		t.Fatal(err)
@@ -1136,7 +1136,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	// ///////////////////////////////////////
 	account1.Name = "Jane Doe Updated again " + tx2.Id
 	var finalName = account1.Name
-	var updatedEtag2 string
+	var updatedEtag2 *string
 	updatedEtag2, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, updatedEtag)
 	if err != nil {
 		t.Fatal(err)
@@ -1165,7 +1165,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	// cannot see object using middle index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", middleName).
 		Find(accountsRead)
@@ -1178,7 +1178,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	// cannot see object using new index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", finalName).
 		Find(accountsRead)
@@ -1191,7 +1191,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	// can see object using old index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -1205,7 +1205,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	// can see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -1215,11 +1215,170 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	assert.Equal(&Account{Id: account1.Id, Name: oldName}, accountRead)
 }
 
+func TestTransactions_T1BeginInsertCommit_T2Update_T3UpdateFailsFast_T2Commit_CheckT2IsGood(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
+	}
+
+	var etag *string
+	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag)
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	errs := repo.Commit(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 for update
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 update
+	// ///////////////////////////////////////
+	var oldName = account1.Name
+	account1.Name = "Jane Doe Updated " + tx2.Id
+	var updatedName = account1.Name
+	var updatedEtag *string
+	updatedEtag, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, etag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(updatedEtag)
+	assert.NotEqual(etag, updatedEtag)
+
+	// ///////////////////////////////////////
+	// tx3 begin
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx3)
+
+	// ///////////////////////////////////////
+	// tx3 read in order to update
+	// ///////////////////////////////////////
+	var accountReadTx3 = &Account{}
+	var etagForUpdatingInTx3 *string
+	etagForUpdatingInTx3, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountReadTx3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx3)
+
+	// ///////////////////////////////////////
+	// tx3 update that should fail
+	// ///////////////////////////////////////
+	account1.Name = "Jane Doe Updated illegally By Tx3 " + tx3.Id
+	var tx3UpdatedName = account1.Name
+	_, err = repo.UpdateTable(context.Background(), &tx3, T_ACCOUNT, account1, etagForUpdatingInTx3)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	assert.True(errors.Is(err, min.StaleObjectError))
+
+	// ///////////////////////////////////////
+	// tx2 commit
+	// ///////////////////////////////////////
+	errs = repo.Commit(context.Background(), &tx2)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx4 for reading
+	// ///////////////////////////////////////
+	tx4, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx4)
+
+	// ///////////////////////////////////////
+	// cannot see object using old index entry
+	// ///////////////////////////////////////
+	var accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", oldName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// cannot see object using tx3 index entry
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", tx3UpdatedName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// can see object using updated index entry from tx2
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*accountsRead))
+	assert.Equal(&Account{Id: account1.Id, Name: updatedName}, (*accountsRead)[0])
+
+	// ///////////////////////////////////////
+	// can see object using id
+	// ///////////////////////////////////////
+	accountRead := &Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(&Account{Id: account1.Id, Name: updatedName}, accountRead)
+}
+
 func TestTransactions_TODO(t *testing.T) {
-	assert.Fail(t, "TODO update by second tx should fail fast before it gets around to writing reverse indices, otherwise that would screw things up")
 	assert.Fail(t, "TODO update twice, are updates by any other txs affected by tx1 having not added indices that are to be deleted, to reverse indices?")
 	assert.Fail(t, "TODO update with two fields to ensure that one is left intact")
-	assert.Fail(t, "TODO 2xupdate rollback")
 	assert.Fail(t, "TODO update, check tx1 can only see updated version, if using id or index; ensure new tx2 cannot see new version")
 	assert.Fail(t, "TODO update")
 	assert.Fail(t, "TODO need to return etags of objects that are read, or optionally provide a map which is filled with etag per id?")

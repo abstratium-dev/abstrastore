@@ -23,7 +23,7 @@ type Transaction struct {
 	Steps []*TransactionStep `json:"steps"`
 	
 	// key is path to object; allows the transaction to avoid reading things that it wrote or already read (enabling repeatable reads)
-	Cache map[string]*any `json:"-"`
+	Cache map[string]*ObjectAndETag `json:"-"`
 
 	// InProgress, Committing, RollingBack
 	State string `json:"state"`
@@ -37,7 +37,7 @@ func NewTransaction(timeout time.Duration) Transaction {
 		StartMicroseconds: now.UnixMicro(),
 		TimeoutMicroseconds: now.Add(timeout).UnixMicro(),
 		Steps: make([]*TransactionStep, 0, 10),
-		Cache: make(map[string]*any),
+		Cache: make(map[string]*ObjectAndETag),
 		State: "InProgress",
 	}
 }
@@ -130,31 +130,6 @@ func (t *Transaction) AddStep(Type string, ContentType string, Path string, Init
 	}
 	t.Steps = append(t.Steps, &step)
 
-	// insert and update data are added
-	if(Type == "insert-data") {
-		t.Cache[Path] = Entity
-	} else if (Type == "update-data") {
-		t.Cache[Path] = Entity
-
-	// insert and new update indices are added
-	// yes, indices are also cached, since we add from the cache when inspecting the index entries
-	} else if (Type == "insert-add-index") {
-		t.Cache[Path] = Entity
-	} else if (Type == "update-add-index") {
-		t.Cache[Path] = Entity
-
-	// old update indices are removed, because we shouldn't find entries based on old indices, at least not within the current transaction that change the index
-	} else if (Type == "update-remove-index") {
-		t.Cache[Path] = nil
-
-	// reverse indices are not added
-	} else if (Type == "insert-reverse-indices") {
-	} else if (Type == "update-reverse-indices") {
-
-	} else {
-		return fmt.Errorf("ADB-0003 Unexpected transaction step type %s, please contact abstratrium", Type)
-	}
-
 	return nil
 }
 
@@ -171,11 +146,16 @@ type TransactionStep struct {
 	Entity *any `json:"-"`
 	Executed bool `json:"executed"`
 
-	FinalETag string `json:"finalEtag"`
-	FinalVersionId string `json:"finalVersionId"`
+	FinalETag *string `json:"finalEtag"`
+	FinalVersionId *string `json:"finalVersionId"`
 }
 
-func (step *TransactionStep) SetFinalETagAndVersionId(finalETag string, finalVersionId string) {
+func (step *TransactionStep) SetFinalETagAndVersionId(finalETag *string, finalVersionId *string) {
 	step.FinalETag = finalETag
 	step.FinalVersionId = finalVersionId
+}
+
+type ObjectAndETag struct {
+	Object *any
+	ETag   *string
 }

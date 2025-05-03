@@ -78,7 +78,7 @@ func TestAll(t *testing.T) {
 	t.Run("Read By Exact Name using Index", func(t *testing.T) {
 		var accountsRead = []*Account{}
 		
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Account{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Account{}).
 				SelectFromTable(T_ACCOUNT).
 				WhereIndexedFieldEquals("Name", account1.Name).
 				Find(&accountsRead)
@@ -117,7 +117,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Issue by CreatedBy using Index", func(t *testing.T) {
 		var issuesRead = []*Issue{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Issue{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Issue{}).
 				SelectFromTable(T_ISSUE).
 				WhereIndexedFieldEquals("CreatedBy", account1.Id).
 				Find(&issuesRead)
@@ -155,7 +155,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Who Is Watching Issue By IssueId", func(t *testing.T) {
 		var watchesRead = []*Watch{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
 				SelectFromTable(T_WATCH).
 				WhereIndexedFieldEquals("IssueId", issue1.Id).
 				Find(&watchesRead)
@@ -171,7 +171,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Who Is Watching Issue By AccountId", func(t *testing.T) {
 		var watchesRead = []*Watch{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
 				SelectFromTable(T_WATCH).
 				WhereIndexedFieldEquals("AccountId", account1.Id).
 				Find(&watchesRead)
@@ -244,7 +244,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Who Is Watching Second Issue By IssueId", func(t *testing.T) {
 		var watchesRead = []*Watch{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
 				SelectFromTable(T_WATCH).
 				WhereIndexedFieldEquals("IssueId", issue2.Id).
 				Find(&watchesRead)
@@ -260,7 +260,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Which Issues Are Being Watched By First Account", func(t *testing.T) {
 		var watchesRead = []*Watch{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
 				SelectFromTable(T_WATCH).
 				WhereIndexedFieldEquals("AccountId", account1.Id).
 				Find(&watchesRead)
@@ -276,7 +276,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Which Issues Are Being Watched By Second Account", func(t *testing.T) {
 		var watchesRead = []*Watch{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
 				SelectFromTable(T_WATCH).
 				WhereIndexedFieldEquals("AccountId", account2.Id).
 				Find(&watchesRead)
@@ -291,7 +291,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Which Issues Are Being Watched By Unknown Account", func(t *testing.T) {
 		var watchesRead = []*Watch{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Watch{}).
 				SelectFromTable(T_WATCH).
 				WhereIndexedFieldEquals("AccountId", "unknown").
 				Find(&watchesRead)
@@ -305,7 +305,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Issue by CreatedBy using Index Now That There Are Several Rows", func(t *testing.T) {
 		var issuesRead = []*Issue{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Issue{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Issue{}).
 				SelectFromTable(T_ISSUE).
 				WhereIndexedFieldEquals("CreatedBy", account2.Id).
 				Find(&issuesRead)
@@ -320,7 +320,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Issue by Unknown CreatedBy", func(t *testing.T) {
 		var issuesRead = []*Issue{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Issue{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Issue{}).
 				SelectFromTable(T_ISSUE).
 				WhereIndexedFieldEquals("CreatedBy", "unknown").
 				Find(&issuesRead)
@@ -334,7 +334,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Account by Id", func(t *testing.T) {
 		var accountRead = &Account{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Account{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Account{}).
 				SelectFromTable(T_ACCOUNT).
 				WhereIdEquals(account1.Id).
 				Find(accountRead)
@@ -348,7 +348,7 @@ func TestAll(t *testing.T) {
 
 	t.Run("Read Account by Unknown Id", func(t *testing.T) {
 		var accountRead = &Account{}
-		err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Account{}).
+		_, err := min.NewTypedQuery(repo, context.Background(), &schema.Transaction{}, &Account{}).
 				SelectFromTable(T_ACCOUNT).
 				WhereIdEquals("unknown").
 				Find(accountRead)
