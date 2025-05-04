@@ -1864,17 +1864,17 @@ func TestTransactions_TODO(t *testing.T) {
 	assert.Fail(t, "TODO update twice, are updates by any other txs affected by tx1 having not added indices that are to be deleted, to reverse indices?")
 	assert.Fail(t, "TODO update with two fields to ensure that one is left intact")
 	assert.Fail(t, "TODO update")
-	assert.Fail(t, "TODO a test with many versions of an object since they haven't been garbage collected yet, and ensure it returns the one for this transaction, rather than a new version that isn't committed yet")
 
 	assert.Fail(t, "TODO test rollback works when we were unable to write the final transaction file upon insert")
-	assert.Fail(t, "TODO test that a second transaction doesn't read the newly updated version of a row")
 	assert.Fail(t, "TODO delete")
 	assert.Fail(t, "TODO t1 BeginDelete_T2BeginInsert_FailsWithStaleObject or something because the file still exists")
 	assert.Fail(t, "TODO t1 BeginDelete_T2Begin_T1Commit_T2InsertCommit should work fine")
 
 	assert.Fail(t, "TODO delete and impact on indices")
 	assert.Fail(t, "TODO update and impact on indices")
+
 	assert.Fail(t, "TODO upsert and impact on indices")
+
 	assert.Fail(t, "TODO range scans")
 
 	// range scans
