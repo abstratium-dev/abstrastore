@@ -98,6 +98,16 @@ func TestTransactions_BeginCommit(t *testing.T) {
 	if err == nil {
 		t.Fatal("transaction path should no longer exist")
 	}
+
+	// commit again => error
+	errs = repo.Commit(context.Background(), &tx)
+	assert.Equal(1, len(errs))
+	assert.Equal(schema.TransactionAlreadyCommittedError, errs[0])
+
+	// rollback => error
+	errs = repo.Rollback(context.Background(), &tx)
+	assert.Equal(1, len(errs))
+	assert.Equal(schema.TransactionAlreadyCommittedError, errs[0])
 }
 
 func TestTransactions_BeginRollback(t *testing.T) {
@@ -135,6 +145,15 @@ func TestTransactions_BeginRollback(t *testing.T) {
 		t.Fatal("transaction path should no longer exist")
 	}
 
+	// commit => error
+	errs = repo.Commit(context.Background(), &tx)
+	assert.Equal(1, len(errs))
+	assert.Equal(schema.TransactionAlreadyRolledBackError, errs[0])
+
+	// rollback again => error
+	errs = repo.Rollback(context.Background(), &tx)
+	assert.Equal(1, len(errs))
+	assert.Equal(schema.TransactionAlreadyRolledBackError, errs[0])
 }
 
 func TestTransactions_BeginTimeout(t *testing.T) {
@@ -159,6 +178,13 @@ func TestTransactions_BeginTimeout(t *testing.T) {
 	
 	assert.True(tx.IsExpired())
 	assert.Equal(schema.TransactionTimedOutError, tx.IsOk())
+
+	// commit => error
+	errs := repo.Commit(context.Background(), &tx)
+	assert.Equal(1, len(errs))
+	assert.Equal(schema.TransactionTimedOutError, errs[0])
+
+	// rollback => is ok and is tested above
 }
 
 func TestTransactions_BeginInsertCommit(t *testing.T) {
@@ -674,6 +700,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer repo.Rollback(context.Background(), &tx3)
 
 	// ///////////////////////////////////////
 	// cannot see object using old index entry
@@ -727,6 +754,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer repo.Rollback(context.Background(), &tx1)
 
 	DATABASE := schema.NewDatabase("transactions-tests")
 	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
@@ -785,6 +813,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer repo.Rollback(context.Background(), &tx3)
 
 	// ///////////////////////////////////////
 	// cannot see object using new index entry
@@ -1374,6 +1403,171 @@ func TestTransactions_T1BeginInsertCommit_T2Update_T3UpdateFailsFast_T2Commit_Ch
 		t.Fatal(err)
 	}
 	assert.Equal(&Account{Id: account1.Id, Name: updatedName}, accountRead)
+}
+
+func TestTransactions_T0Begin_T1BeginInsertCommit_T0CannotSeeObjectFromT1(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	// ///////////////////////////////////////
+	// tx0 begin
+	// ///////////////////////////////////////
+	tx0, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx0)
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx0.Id, // helps with concurrent tests
+	}
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
+	var etag *string
+	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag)
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	errs := repo.Commit(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// t0 cannot see object using id
+	// ///////////////////////////////////////
+	var accountRead = &Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		assert.True(errors.Is(err, min.NoSuchKeyError))
+	} else {
+		t.Fatal("expected not found")
+	}
+
+	// ///////////////////////////////////////
+	// t0 cannot see object using index entry
+	// ///////////////////////////////////////
+	accountsRead := &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", account1.Name).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+}
+
+func TestTransactions_T0Begin_T1BeginInsertUpdate_T0CannotSeeObjectFromT1(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	// ///////////////////////////////////////
+	// tx0 begin
+	// ///////////////////////////////////////
+	tx0, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx0)
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx0.Id, // helps with concurrent tests
+	}
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx1)
+
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
+	var etag *string
+	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag)
+
+	// ///////////////////////////////////////
+	// tx1 update
+	// ///////////////////////////////////////
+	account1.Name = "John Doe Updated " + tx1.Id
+	etag, err = repo.UpdateTable(context.Background(), &tx1, T_ACCOUNT, account1, etag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag)
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	errs := repo.Commit(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// t0 cannot see object using id
+	// ///////////////////////////////////////
+	accountRead := &Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		assert.True(errors.Is(err, min.NoSuchKeyError))
+	} else {
+		t.Fatal("expected not found")
+	}
+
+	// ///////////////////////////////////////
+	// t0 cannot see object using index entry
+	// ///////////////////////////////////////
+	accountsRead := &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", account1.Name).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
 }
 
 func TestTransactions_TODO(t *testing.T) {

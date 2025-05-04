@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -848,6 +849,9 @@ func (r *MinioRepository) GetTransactionsInProgress(ctx context.Context, transac
 }
 
 func (r *MinioRepository) Commit(ctx context.Context, tx *schema.Transaction) []error {
+	if err := tx.IsOk(); err != nil {
+		return []error{err}
+	}
 	errs := make([]error, 0, 10) // remove as much as possible
 	tx.State = "Committing"
 	err := r.updateTransaction(ctx, tx) // store in case this process fails and needs recovering
@@ -886,6 +890,14 @@ func (r *MinioRepository) Commit(ctx context.Context, tx *schema.Transaction) []
 }
 
 func (r *MinioRepository) Rollback(ctx context.Context, tx *schema.Transaction) []error {
+	if err := tx.IsOk(); err != nil {
+		if errors.Is(err, schema.TransactionTimedOutError) {
+			// ok, let the caller roll it back
+		} else {
+			return []error{err}
+		}
+	}
+
 	tx.State = "RollingBack"
 	err := r.updateTransaction(ctx, tx) // store in case this process fails and needs recovering
 	if err != nil {

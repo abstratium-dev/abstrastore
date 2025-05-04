@@ -56,7 +56,7 @@ func (t *Transaction) IsOk() error {
 	} else if t.State == "RollingBack" {
 		return TransactionAlreadyRolledBackError
 	} else if t.State != "InProgress" {
-		panic("Transaction is in an unknown state")
+		panic("ADB-0014 Transaction is in an unknown state: " + t.State)
 	}
 
 	if t.IsExpired() {
@@ -76,13 +76,13 @@ func (t *Transaction) GetIdAndTimeoutMicrosFromPath(path string) (string, uint64
 	filename = strings.Trim(filename, "/")
 	split := strings.Split(filename, TIMESTAMP_ID_SEPARATOR)
 	if len(split) != 2 {
-		panic("Invalid transaction path " + path)
+		panic("ADB-0015 Invalid transaction path " + path)
 	}
 	id := split[1]
 	timeoutAsString := split[0]
 	timeout, err := strconv.ParseUint(timeoutAsString, 10, 64)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("ADB-0016 Invalid transaction path %s, %w", path, err))
 	}
 	return id, timeout
 }
