@@ -248,6 +248,7 @@ func getByPath[T any](ctx context.Context, repo *MinioRepository, transaction *s
 		return nil, err
 	}
 	if cached, ok := transaction.Cache[path]; ok {
+		etag = cached.ETag
 		val := *cached.Object
 		var t *T = val.(*T)
 		*destination = *t
