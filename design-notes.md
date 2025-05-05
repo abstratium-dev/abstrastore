@@ -54,7 +54,7 @@ INSERT
 /db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< write file, step=insert-index, cached
 /db/t/data/id.indices                     <<< write file, used to delete old index entries, step=insert-reverse-indices
 
-describe what gets cached.
+TODO describe what gets cached.
 
 ROLLBACK INSERT
 /db/t/data/id.json                        <<< delete the version of this file
@@ -75,7 +75,9 @@ UPDATE (field value of field name 2 changes)
 /db/t/indices/fn2/fv'[:2]/fv'/db___t___id <<< write file (the field value changed and this is the new index entry)**, step=update-add-index, cached
 /db/t/data/id.indices                     <<< write new version of file containing new indices that would need modifying on UD*
 
-* should it contain just fn1/fv and fn2/fv', or all three and be updated on commit? the nice thing is that no one else can see the latest version of the actual object and so they cannot get its etag and so they cannot update it. the only one able to update it again is the current transaction. the version of the actual object with the updated field cannot be selected because it's not committed yet and that version belongs to an open transaction and so will be ignored by all other transactions.
+* should it contain just fn1/fv and fn2/fv', or all three and be updated on commit? the nice thing is that no one else can see the latest version of the actual object and so they cannot get its etag and so they cannot update it. the only one able to update it again is the current transaction. the version of the actual object with the updated field cannot be selected because it's not committed yet and that version belongs to an open transaction and so will be ignored by all other transactions. Store the indices that will be needed if the transaction is committed. If it isn't committed,
+rollback this file to the version that existed before the transaction started. If the transaction updates twice, it
+doesn't matter, because either the final version of this file should be used, or all intermediate versions should be rolledback.
 
 ** set txid into metadata. anytime that index files are read, we always need to disregard entries related to transactions that are in progress, otherwise other tx will use them to read objects that do not match their predicate. it'll be interesting to see how many concurrent transactions still perform well.
 

@@ -115,35 +115,20 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 
 ## TODO
 
-- test: update and then select it using indices and id, both should come out of the cache.
-  - the selection with the index is interesting, because we can use the cache. or is that irrelevant since we will read our own index entries from minio even tho they aren't committed?
 - PutObjectFanOut for writing multiple files at the same time? more efficient?
--	check why old index is still in cache and not removed from minio;
--	how the hell will a second transaction find the old object based on the old index. ah, maybe that is why we dont delete it until commit?
 -	how do deleted objects work in minio? when there is no data??
--	work updates out, it aint working yet.
-
 - when committing/rolling back, we could update the file so that the exipiry time is set to in 100ms that way if the process were to die, another instance would very quickly complete the transaction
-
-- How does t2 avoid reading a non committed version of data from t1 (that started first and has already written data) without reading open txs to know what is not yet committed?  Metadata has tx ids in it, so do listobjects and use tx ids to filter versions (that aren't committed)
-
-- what was this about? Since we always read sll versions when reading, we don't need to store copies in a tx folder. When reading, simply decide what the start timestamp for the tx is, IGNORE any running transactions. Take the lowest timestamp from tx metadata. Not that won't work as we'd ignore other committed txs that commit before us, after the earliest open tx => it was on whatsapp
+- fix docs/design.drawio (keep the old on in an archive folder as an alternative design)
 - document limitations from https://min.io/docs/minio/linux/operations/concepts/thresholds.html, e.g. field value in index may not be too long
 - improve: min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).SelectFromTable(T_ACCOUNT) => if T_ACCOUNT had a reference to the template, we wouldn't need to provide it in the typed query?
 - rename to abstraDB?
-- how do we delete old indices efficiently? 
-  - they are in a path like this: abstrastore-tests/transactions-tests/account/indices/Name/jo/john doe/transactions-tests___account___36ce5121-1a22-4101-b34f-b7063511c0f9
-  - we need to perhaps store them with the actual object when it is created and updated?
 - test what happens if you update an object that has in the mean time been deleted. should get a StaleObjectError.
-- add update
 - add delete
 - add upsert
-- add read
-- add all CRUD stuff to transaction cache, so that its repeatable read
-- use UserMetadata more, since we get it when listing objects, not just reading objects
-- if operation on tx is after timeout, then throw error
 - range index search, e.g. more than or between, rather than exact matches
 - index search with regex
+- add all CRUD stuff to transaction cache, so that its repeatable read
+- use UserMetadata more, since we get it when listing objects, not just reading objects
 - explain that we use the index prefix of two letters so that you can do autocomplete searches
 - make interface have insert, upsert, update. insert and update fail if the object exists, or doesn't exist respectively.
 - document using etags when updating
@@ -156,5 +141,6 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 - add using https://pkg.go.dev/about#adding-a-package
 - sql parsing - https://github.com/xwb1989/sqlparser
 - put internal structs into internal package
+  - create an api, everything else should be hidden in internal packages
 - make cleaning up old versions configurable in order to support auditing requirements
 

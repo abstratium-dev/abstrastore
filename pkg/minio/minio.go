@@ -278,6 +278,11 @@ func getByPath[T any](ctx context.Context, repo *MinioRepository, transaction *s
 // If the entity already exists, returns a DuplicateKeyError.
 // If the entity is about to be written by a different transaction, returns a ObjectLockedError.
 func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any) (*string, error) {
+
+	if err := transaction.IsOk(); err != nil {
+		return nil, err
+	}
+
 	var err error
 
 	// //////////////////////////////////////////////////
@@ -360,6 +365,11 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 // If the ETag is * which we interpret as meaning the object should not exist, but it does, then we return ObjectLockedError.
 // If the object doesn't exist this method returns a NoSuchKeyError.
 func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any, etag *string) (*string, error) {
+
+	if err := transaction.IsOk(); err != nil {
+		return nil, err
+	}
+
 	var err error
 
 	// //////////////////////////////////////////////////
@@ -400,9 +410,11 @@ func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.T
 	existingIndices := strings.Split(strings.TrimSpace(existingIndicesAsString), "\n")
 
 	// //////////////////////////////////////////////////
-	// handle new indices
+	// add any indices that don't exist yet.
+	// at the same time *all* indices that should exist,
+	// for the reverse index file
 	// //////////////////////////////////////////////////
-	newIndices := make([]string, 0, len(table.Indices))
+	allIndicesRequiredAfterCommit := make([]string, 0, len(table.Indices))
 	for _, index := range table.Indices {
 		// use reflection to fetch the value of the field that the index is based on
 		value, err := getFieldValueAsString(entity, index.Field)
@@ -419,14 +431,14 @@ func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.T
 			}
 		} // else keep it
 
-		newIndices = append(newIndices, indexPath)
+		allIndicesRequiredAfterCommit = append(allIndicesRequiredAfterCommit, indexPath)
 	}
 
 	// //////////////////////////////////////////////////
 	// calculate which ones to delete
 	// //////////////////////////////////////////////////
 	for _, existingIndex := range existingIndices {
-		if !slices.Contains(newIndices, existingIndex) {
+		if !slices.Contains(allIndicesRequiredAfterCommit, existingIndex) {
 			// ETag: "" - not relevant for deletion
 			err = transaction.AddStep("update-remove-index", "text/plain", existingIndex, "", nil)
 			if err != nil {
@@ -438,10 +450,12 @@ func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.T
 	// //////////////////////////////////////////////////
 	// handle reverse indices
 	// //////////////////////////////////////////////////
-	// use the path as a tree style index. that way, we simply walk down the tree until we find the key
+	// store all indices as they should be after the tx commits,
+	// so that future transactions can know what files to delete,
+	// just like this algorithm calculates above.
 	indicesPath := table.IndicesPath(id)
-	var indicesData any = strings.Join(newIndices, "\n")
-	err = transaction.AddStep("update-reverse-indices", "text/plain", indicesPath, "", &indicesData) // Etag: "" - we need to overwrite the file
+	var indicesData any = strings.Join(allIndicesRequiredAfterCommit, "\n")
+	err = transaction.AddStep("update-reverse-indices", "text/plain", indicesPath, "", &indicesData) // Etag: "" - we need to overwrite the file and create a new version
 	if err != nil {
 		return nil, err
 	}
@@ -514,9 +528,9 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 		} else if step.Type == "insert-data" || // create new object
 				  step.Type == "insert-add-index" || // create new object
 				  step.Type == "insert-reverse-indices" || // create new object
-				  step.Type == "update-data" || // create new object
+				  step.Type == "update-data" || // create new version of object
 				  step.Type == "update-add-index" || // create new object
-				  step.Type == "update-reverse-indices" { // create new object
+				  step.Type == "update-reverse-indices" { // create new version of object
 
 			uploadInfo, err := r.Client.PutObject(ctx, r.BucketName, step.Path, bytes.NewReader(*step.Data), int64(len(*step.Data)), opts)
 			if err != nil {
@@ -915,7 +929,11 @@ func (r *MinioRepository) Rollback(ctx context.Context, tx *schema.Transaction) 
 		   step.Type == "update-data" || // remove the version that was updated
 		   step.Type == "update-reverse-indices" { // exists for the object key, containing the current list of index files - remove version that was added
 			
-			versionIds := make([]string, 0, 10) // ok, there really should only ever be one version, but let's be paranoid in the case that we were unable to update the transaction after putting objects
+			// ok, there really should only ever be one version, but let's be paranoid in the case that we were unable to
+			// update the transaction after putting objects. or a better example: two updates in a transaction where the
+			// second time we failed to update the tx file. then we could find multiple reverse indice file versions that
+			// need cleaning up.
+			versionIds := make([]string, 0, 10)
 			if step.FinalVersionId != nil {
 				versionIds = append(versionIds, *step.FinalVersionId)
 			}

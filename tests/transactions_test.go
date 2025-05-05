@@ -1862,6 +1862,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginRead_CheckETagsAr
 
 func TestTransactions_TODO(t *testing.T) {
 	assert.Fail(t, "TODO update twice, are updates by any other txs affected by tx1 having not added indices that are to be deleted, to reverse indices?")
+	// does reverse index file need to temporarily contain all the files since some are not deleted? transaction steps - are they stored for recovery?
 	assert.Fail(t, "TODO update with two fields to ensure that one is left intact")
 	assert.Fail(t, "TODO update")
 
