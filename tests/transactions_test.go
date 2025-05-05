@@ -1772,7 +1772,6 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginRead_CheckETagsAr
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx1)
 
 	var account1 = &Account{
 		Id:   uuid.New().String(),
@@ -1860,9 +1859,332 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginRead_CheckETagsAr
 	assert.Equal(*etag1, *etagRead)
 }
 
+// the aim of this test it so check that each TX uses it's own index entry and not the ones of other TXs.
+// the point is that at the time of reading, there are multiple index files. yet because we do repeatable
+// reads using versions, we ensure that the tx can only see what the rules dictate.
+func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2SelectByIndex_T2Update_CheckT3AndT2_T2Commit_CheckT3AndT2(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
+	}
+	originalName := account1.Name
+
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
+	var etag1 *string
+	etag1, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag1)
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx1); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 begin
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 update
+	// ///////////////////////////////////////
+	account1.Name = "John Doe Updated " + tx2.Id
+	updatedName := account1.Name
+	var etag2 *string
+	etag2, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, etag1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag2)
+
+	// ///////////////////////////////////////
+	// tx3 begin for reading
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx3)
+
+	// ///////////////////////////////////////
+	// tx3 read using original name => success
+	// ///////////////////////////////////////
+	accountsRead := &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", originalName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*accountsRead))
+	assert.Equal(account1.Id, (*accountsRead)[0].Id)
+	assert.Equal(originalName, (*accountsRead)[0].Name)
+
+	// ///////////////////////////////////////
+	// tx3 read using new name => fails
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// tx2 select using new name => success
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*accountsRead))
+	assert.Equal(account1.Id, (*accountsRead)[0].Id)
+	assert.Equal(updatedName, (*accountsRead)[0].Name)
+
+	// ///////////////////////////////////////
+	// tx2 select using original name => fails
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", originalName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// tx2 update
+	// ///////////////////////////////////////
+	account1.Name = "John Doe Updated Again " + tx2.Id
+	updatedNameAgain := account1.Name
+	var etag3 *string
+	etag3, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, etag2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag3)
+
+	// ///////////////////////////////////////
+	// tx3 read using original name => success
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", originalName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*accountsRead))
+	assert.Equal(account1.Id, (*accountsRead)[0].Id)
+	assert.Equal(originalName, (*accountsRead)[0].Name)
+
+	// ///////////////////////////////////////
+	// tx3 read using updated name => fails
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// tx3 read using second updated name => fails
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedNameAgain).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// tx2 select using second updated name => success
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedNameAgain).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*accountsRead))
+	assert.Equal(account1.Id, (*accountsRead)[0].Id)
+	assert.Equal(updatedNameAgain, (*accountsRead)[0].Name)
+
+	// ///////////////////////////////////////
+	// tx2 select using original name => fails
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", originalName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// tx2 select using updated name => fails
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// tx2 commit
+	// ///////////////////////////////////////
+	errs := repo.Commit(context.Background(), &tx2)
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 read using original name => success, 
+	// because still running, so sees snapshot
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", originalName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+crap, this fails. we need to cache index searches?  
+	assert.Equal(1, len(*accountsRead))
+	assert.Equal(account1.Id, (*accountsRead)[0].Id)
+	assert.Equal(originalName, (*accountsRead)[0].Name)
+
+	// ///////////////////////////////////////
+	// tx3 read using updated name => fails
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// tx3 read using second updated name => fails
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedNameAgain).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// tx4 begin for reading after commit
+	// ///////////////////////////////////////
+	tx4, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx4)
+
+	// ///////////////////////////////////////
+	// tx4 select using second updated name => success
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedNameAgain).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*accountsRead))
+	assert.Equal(account1.Id, (*accountsRead)[0].Id)
+	assert.Equal(updatedNameAgain, (*accountsRead)[0].Name)
+
+	// ///////////////////////////////////////
+	// tx4 select using original name => fails
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", originalName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+
+	// ///////////////////////////////////////
+	// tx4 select using updated name => fails
+	// ///////////////////////////////////////
+	accountsRead = &[]*Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", updatedName).
+		Find(accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*accountsRead))
+}
+
 func TestTransactions_TODO(t *testing.T) {
 	assert.Fail(t, "TODO update twice, are updates by any other txs affected by tx1 having not added indices that are to be deleted, to reverse indices?")
-	// does reverse index file need to temporarily contain all the files since some are not deleted? transaction steps - are they stored for recovery?
 	assert.Fail(t, "TODO update with two fields to ensure that one is left intact")
 	assert.Fail(t, "TODO update")
 
