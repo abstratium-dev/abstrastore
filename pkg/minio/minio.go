@@ -29,6 +29,7 @@ const MAX_TX_TIMEOUT_MICROS = 10 * 60 * 1000 * 1000 // 10 minutes
 const GC_ROOT = "gc/"
 
 var repo *MinioRepository
+var theCallback Callback
 
 type MinioRepository struct {
 	Client     *minio.Client
@@ -37,7 +38,8 @@ type MinioRepository struct {
 	// no need for any locks - see https://github.com/minio/minio-go/issues/1125, which seems to have fixed any issues related to goroutine-safety
 }
 
-func Setup() {
+func Setup(callback Callback) {
+	theCallback = callback
 	endpoint := os.Getenv("MINIO_URL")
 	accessKey := os.Getenv("MINIO_ACCESS_KEY_ID")
 	secretKey := os.Getenv("MINIO_SECRET_ACCESS_KEY")
@@ -66,6 +68,82 @@ func Setup() {
 	}
 	if !versioningConfig.Enabled() {
 		panic("Versioning is not enabled for the bucket")
+	}
+
+	// add a timer which runs every 10 seconds to delete any files in the GC folder
+	go func() {
+		for {
+			ExecuteGc()
+			time.Sleep(10 * time.Second)
+		}
+	}()
+}
+
+func ExecuteGc() {
+	for objectInfo := range repo.Client.ListObjects(context.Background(), repo.BucketName, minio.ListObjectsOptions{
+		Prefix: GC_ROOT,
+		WithVersions: true,
+		WithMetadata: true,
+	}) {
+		if objectInfo.Err != nil {
+			theCallback.ErrorDuringGc(objectInfo.Err)
+		} else {
+			// note that if two GC entries were created in the same microsecond, there could be two versions of the
+			// object, and we need to delete both
+			key := objectInfo.Key[len(GC_ROOT):]
+			keepUntil, err := strconv.ParseInt(key, 10, 64)
+			if err != nil {
+				theCallback.ErrorDuringGc(fmt.Errorf("ADB-0017 failed to parse GC entry %s: %w", objectInfo.Key, err))
+				continue
+			}
+			
+			now := time.Now().UnixMicro()
+			if now > keepUntil {
+				// read the contents as a string which is the path of the file that actually needs deleting
+				object, err := repo.Client.GetObject(context.Background(), repo.BucketName, objectInfo.Key, minio.GetObjectOptions{
+					VersionID: objectInfo.VersionID,
+				})
+				if err != nil {
+					theCallback.ErrorDuringGc(fmt.Errorf("ADB-0029 failed to get object %s: %w", objectInfo.Key, err))
+				}
+				defer object.Close()
+				fileDoesNotExist := false
+
+				// read the contents as a string
+				contents, err := io.ReadAll(object)
+				if err != nil {
+					respErr := minio.ToErrorResponse(err)
+					if respErr.StatusCode == http.StatusNotFound {
+						// if the error is "not found", then ignore it, another pod seems to have handled it already,
+						// between this one listing the objects, and then reading the actual object
+						fileDoesNotExist = true
+					} else {
+						theCallback.ErrorDuringGc(fmt.Errorf("ADB-0018 failed to read contents of gc entry %s: %w", objectInfo.Key, err))
+					}
+				}
+
+				if !fileDoesNotExist {
+					pathToDelete := string(contents)
+	
+					// now remove the actual file that was marked for deletion.
+					// this method doesn't seem to throw an error if the object doesn't exist, perhaps since we aren't setting a version id.
+					// it could be missing if another pod is running in parallel.
+					// but fine, if it isn't found, and no error comes, that works for me.
+					err = repo.Client.RemoveObject(context.Background(), repo.BucketName, pathToDelete, minio.RemoveObjectOptions{})
+					if err != nil {
+						theCallback.ErrorDuringGc(fmt.Errorf("ADB-0031 failed to remove file %s referenced in gc entry %s: %w", pathToDelete, objectInfo.Key, err))
+					}
+				}	
+
+				// now remove the gc entry, as we have cleaned up everything
+				err = repo.Client.RemoveObject(context.Background(), repo.BucketName, objectInfo.Key, minio.RemoveObjectOptions{
+					VersionID: objectInfo.VersionID,
+				})
+				if err != nil {
+					theCallback.ErrorDuringGc(fmt.Errorf("ADB-0030 failed to remove gc entry %s: %w", objectInfo.Key, err))
+				}
+			}
+		}
 	}
 }
 
@@ -567,7 +645,7 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 						return nil, &StaleObjectErrorWithDetails[any]{Details: fmt.Sprintf("object %s is stale. Reload and try again. Note, a different transaction that is also in progress may be writing to this object.", step.Path), Object: step.Entity}
 					}
 				}
-				return nil, fmt.Errorf("failed to put object with Id %s to path %s: %w", id, step.Path, err)
+				return nil, fmt.Errorf("ADB-0019 failed to put object with Id %s to path %s: %w", id, step.Path, err)
 			}
 	
 			// update, so that commit/rollback can be more efficient
@@ -710,18 +788,18 @@ func getFieldValueAsString(obj interface{}, fieldName string) (string, error) {
 
 	// Make sure we're dealing with a struct
 	if v.Kind() != reflect.Struct {
-		return "", fmt.Errorf("expected a struct, got %s", v.Kind())
+		return "", fmt.Errorf("ADB-0020 expected a struct, got %s", v.Kind())
 	}
 
 	// Get the field by name
 	field := v.FieldByName(fieldName)
 	if !field.IsValid() {
-		return "", fmt.Errorf("no such field: %s", fieldName)
+		return "", fmt.Errorf("ADB-0021 no such field: %s", fieldName)
 	}
 
 	// check it is a string, otherwise create an error
 	if field.Kind() != reflect.String {
-		return "", fmt.Errorf("field %s is not a string", fieldName)
+		return "", fmt.Errorf("ADB-0022 field %s is not a string", fieldName)
 	}
 
 	return field.Interface().(string), nil
@@ -799,7 +877,7 @@ func (r *MinioRepository) readObjectVersionForTransaction(ctx context.Context, t
 		if respErr.StatusCode == http.StatusNotFound {
 			return nil, nil, &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
 		} else {
-			return nil, nil, fmt.Errorf("failed to get object with Path %s: %w", path, err)
+			return nil, nil, fmt.Errorf("ADB-0023 failed to get object with Path %s: %w", path, err)
 		}
 	}
 	defer objectData.Close()
@@ -813,7 +891,7 @@ func (r *MinioRepository) readObjectVersionForTransaction(ctx context.Context, t
 
 func (r *MinioRepository) BeginTransaction(ctx context.Context, timeout time.Duration) (schema.Transaction, error) {
 	if timeout.Microseconds() > MAX_TX_TIMEOUT_MICROS {
-		return schema.Transaction{}, fmt.Errorf("timeout %d is too long, max is %d", timeout.Microseconds(), MAX_TX_TIMEOUT_MICROS)
+		return schema.Transaction{}, fmt.Errorf("ADB-0024 timeout %d is too long, max is %d", timeout.Microseconds(), MAX_TX_TIMEOUT_MICROS)
 	}
 	tx := schema.NewTransaction(timeout)
 	err := r.updateTransaction(ctx, &tx)
@@ -822,7 +900,7 @@ func (r *MinioRepository) BeginTransaction(ctx context.Context, timeout time.Dur
 		if respErr.StatusCode == http.StatusPreconditionFailed {
 			return tx, &DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("transaction %s already exists", tx.Id)}
 		} else {
-			return tx, fmt.Errorf("failed to put transaction %s: %w", tx.Id, err)
+			return tx, fmt.Errorf("ADB-0025 failed to put transaction %s: %w", tx.Id, err)
 		}
 	}
 	return tx, nil
@@ -847,7 +925,7 @@ func (r *MinioRepository) updateTransaction(ctx context.Context, transaction *sc
 		if respErr.StatusCode == http.StatusPreconditionFailed {
 			return &DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("transaction %s already exists", transaction.Id)}
 		} else {
-			return fmt.Errorf("failed to put transaction %s: %w", transaction.Id, err)
+			return fmt.Errorf("ADB-0026 failed to put transaction %s: %w", transaction.Id, err)
 		}
 	}
 	transaction.Etag = uploadInfo.ETag
@@ -889,7 +967,7 @@ func (r *MinioRepository) GetTransactionsInProgress(ctx context.Context, transac
 
 func (r *MinioRepository) Commit(ctx context.Context, tx *schema.Transaction) []error {
 	if err := tx.IsOk(); err != nil {
-		return []error{err}
+		return []error{err} // do not wrap with fmt.Errorf...
 	}
 	errs := make([]error, 0, 10) // remove as much as possible
 	tx.State = "Committing"
@@ -947,7 +1025,7 @@ func (r *MinioRepository) Rollback(ctx context.Context, tx *schema.Transaction) 
 		if errors.Is(err, schema.TransactionTimedOutError) {
 			// ok, let the caller roll it back
 		} else {
-			return []error{err}
+			return []error{err} // do not wrap with fmt.Errorf...
 		}
 	}
 
@@ -1090,7 +1168,7 @@ func (r *MinioRepository) DeleteFolder(ctx context.Context, folderPrefix string,
 		for _, e := range errors {
 			errorString += e.Err.Error() + "\n"
 		}
-		return fmt.Errorf("Finished deletion process with %d errors. All errors were:\n%s", len(errors), errorString)
+		return fmt.Errorf("ADB-0028 Finished deletion process with %d errors. All errors were:\n%s", len(errors), errorString)
 	}
 	return nil
 }

@@ -383,6 +383,13 @@ func TestAll(t *testing.T) {
 	assert.Fail("TODO add full table scan reading based on list objects and an index of a field")
 }
 
+type TestCallback struct {
+}
+
+func (t *TestCallback) ErrorDuringGc(err error) {
+	panic(err)
+}
+
 var repo *min.MinioRepository
 func getRepo() *min.MinioRepository {
 	if repo == nil {
@@ -391,36 +398,10 @@ func getRepo() *min.MinioRepository {
 		os.Setenv("MINIO_SECRET_ACCESS_KEY", "rootpass")
 		os.Setenv("MINIO_BUCKET_NAME", "abstrastore-tests")
 		os.Setenv("MINIO_USE_SSL", "false")
-		min.Setup()
+		min.Setup(&TestCallback{})
 		repo = min.GetRepository()
 	}
 	return repo
-}
-
-type Account struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
-}
-
-// for testing 1..n relationships, one account can create multiple issues
-type Issue struct {
-	Id   string `json:"id"`
-	Title string `json:"title"`
-	Body string `json:"body"`
-
-	// ID of the account that created the issue
-	CreatedBy string `json:"createdBy"`
-}
-
-// for testing n..m relationships, multiple users can watch multiple issues
-type Watch struct {
-	Id   string `json:"id"`
-
-	// being watched
-	IssueId string `json:"issueId"`
-
-	// watching
-	AccountId string `json:"accountId"`
 }
 
 

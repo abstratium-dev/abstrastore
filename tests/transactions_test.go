@@ -2183,17 +2183,509 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	assert.Equal(0, len(*accountsRead))
 }
 
+func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2SelectByIndex(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ISSUE := schema.NewTable(DATABASE, "issue", []string{"Title", "Body"}) // both are indexed
+
+	// ///////////////////////////////////////
+	// tx0 begin - used for reading
+	// ///////////////////////////////////////
+	tx0, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx0)
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var issue = &Issue{
+		Id:   uuid.New().String(),
+		Title: "Title " + tx1.Id, // helps with concurrent tests
+		Body: "Body " + tx1.Id,
+	}
+	originalTitle := issue.Title
+
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
+	var etag1 *string
+	etag1, err = repo.InsertIntoTable(context.Background(), &tx1, T_ISSUE, issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag1)
+
+	// ///////////////////////////////////////
+	// ensure tx0 cannot see object by index
+	// ///////////////////////////////////////
+	issuesRead := &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", issue.Title).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// ensure tx0 cannot see object by id
+	// ///////////////////////////////////////
+	var issueRead *Issue
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals(issue.Id).
+		Find(issueRead)
+	if err != nil {
+		assert.True(errors.Is(err, min.NoSuchKeyError))
+	} else {
+		t.Fatal("should not have found issue")
+	}
+	assert.Nil(issueRead)
+
+	// ///////////////////////////////////////
+	// tx1 can see object by index title
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", issue.Title).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx1 can see object by index body
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Body", issue.Body).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(issue.Title, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx1); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 begin
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 update
+	// ///////////////////////////////////////
+	issue.Title = "Title Updated " + tx2.Id
+	updatedTitle := issue.Title
+	var etag2 *string
+	etag2, err = repo.UpdateTable(context.Background(), &tx2, T_ISSUE, issue, etag1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag2)
+
+	// ///////////////////////////////////////
+	// tx3 begin for reading
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx3)
+
+	// ///////////////////////////////////////
+	// tx3 read using original title => success
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", originalTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(originalTitle, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx3 read using new title => fails
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", updatedTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx3 read using body, should get original version of title
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Body", issue.Body).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(originalTitle, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx2 select using new title => success
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", updatedTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(updatedTitle, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx2 select using original title => fails
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", originalTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx2 select using body should give updated title
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Body", issue.Body).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(updatedTitle, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx2 update second time
+	// ///////////////////////////////////////
+	issue.Title = "Title Updated Again " + tx2.Id
+	updatedTitleAgain := issue.Title
+	var etag3 *string
+	etag3, err = repo.UpdateTable(context.Background(), &tx2, T_ISSUE, issue, etag2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag3)
+
+	// ///////////////////////////////////////
+	// tx3 read using original title => success
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", originalTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(originalTitle, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx3 read using updated title => fails
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", updatedTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx3 read using second updated title => fails
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", updatedTitleAgain).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx3 read using body => success with original title
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Body", issue.Body).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(originalTitle, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx2 select using second updated title => success
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", updatedTitleAgain).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(updatedTitleAgain, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx2 select using original title => fails
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", originalTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx2 select using updated title => fails
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", updatedTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx2 select using body => success, reads non-committed title
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Body", issue.Body).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(updatedTitleAgain, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx2 commit
+	// ///////////////////////////////////////
+	errs := repo.Commit(context.Background(), &tx2)
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 read using original title => success, 
+	// because still running, so sees snapshot.
+	// mysql works like this!
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", originalTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(originalTitle, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx3 read using original body => success, 
+	// because still running, so sees snapshot.
+	// mysql works like this!
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Body", issue.Body).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(originalTitle, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx3 read using updated title => fails
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", updatedTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx3 read using second updated title => fails
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", updatedTitleAgain).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx4 begin for reading after commit
+	// ///////////////////////////////////////
+	tx4, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx4)
+
+	// ///////////////////////////////////////
+	// tx4 select using second updated title => success
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", updatedTitleAgain).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(updatedTitleAgain, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx4 select using body => success
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Body", issue.Body).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(updatedTitleAgain, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx4 select using original title => fails
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", originalTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx4 select using updated title => fails
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", updatedTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+}
+
 func TestTransactions_TODO(t *testing.T) {
-	assert.Fail(t, "TODO update with two fields to ensure that one is left intact")
-	assert.Fail(t, "TODO update")
+
+	assert.Fail(t, "TODO relationships and reading Issue and Watch based on AccountId")
+	assert.Fail(t, "TODO relationships check rollback works with multiple inserts")
+// TODO do we need to document that there is no referential integrity? or do we enforce ref int when inserting we 
+// could check for existance of foreign keys, if DDL describes what to check for?
+	assert.Fail(t, "TODO delete")
 
 	assert.Fail(t, "TODO test rollback works when we were unable to write the final transaction file upon insert")
-	assert.Fail(t, "TODO delete")
 	assert.Fail(t, "TODO t1 BeginDelete_T2BeginInsert_FailsWithStaleObject or something because the file still exists")
 	assert.Fail(t, "TODO t1 BeginDelete_T2Begin_T1Commit_T2InsertCommit should work fine")
-
-	assert.Fail(t, "TODO delete and impact on indices")
-	assert.Fail(t, "TODO update and impact on indices")
 
 	assert.Fail(t, "TODO upsert and impact on indices")
 
@@ -2205,3 +2697,31 @@ func TestTransactions_TODO(t *testing.T) {
 	// full table scans => not supported!
 	// ability to add index later, using a migration
 }
+
+
+type Account struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// for testing 1..n relationships, one account can create multiple issues
+type Issue struct {
+	Id   string `json:"id"`
+	Title string `json:"title"`
+	Body string `json:"body"`
+
+	// ID of the account that created the issue
+	CreatedBy string `json:"createdBy"`
+}
+
+// for testing n..m relationships, multiple users can watch multiple issues
+type Watch struct {
+	Id   string `json:"id"`
+
+	// being watched
+	IssueId string `json:"issueId"`
+
+	// watching
+	AccountId string `json:"accountId"`
+}
+

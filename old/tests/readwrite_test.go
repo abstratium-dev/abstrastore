@@ -22,7 +22,7 @@ func TestReadWrite(t *testing.T) {
 	os.Setenv("MINIO_SECRET_ACCESS_KEY", "rootpass")
 	os.Setenv("MINIO_BUCKET_NAME", "abstrastore-tests")
 	os.Setenv("MINIO_USE_SSL", "false")
-	minio.Setup()
+	minio.Setup(nil)
 	id := uuid.New().String()
 	schema := "integration-tests"
 	start := time.Now()
