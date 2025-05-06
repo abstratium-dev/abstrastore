@@ -91,18 +91,18 @@ ROLLBACK UPDATE
 COMMIT UPDATE
 /db/t/data/id.json                        <<< no need to do anything
 /db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< no need to do anything
-/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< remove this now, step=update-remove-index, see above
+/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< create tombstone, remove later, step=update-remove-index, see above
 /db/t/indices/fn2/fv'[:2]/fv'/db___t___id <<< no need to do anything
 /db/t/data/id.indices                     <<< no need to do anything
 
 
 DELETE
-/db/t/data/id.json                        <<< create empty version or stick a tombstone header on it*
+/db/t/data/id.json                        <<< create tombstone*
 /db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< leave this for the moment, since other txs must still find using old value
 /db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< leave this for the moment, since other txs must still find using old value
 /db/t/data/id.indices                     <<< write new version with no content?
 
-* other tx can then still read this, by reading an old version and ignoring this non committed version
+* other tx can then still read this, by reading an old version and ignoring this non-committed version
 
 ROLLBACK DELETE
 /db/t/data/id.json                        <<< remove empty version created above
@@ -110,10 +110,10 @@ ROLLBACK DELETE
 /db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< nothing to do
 /db/t/data/id.indices                     <<< remove newly created version
 
-COMMIT DELETE - has an inconsistency window
+COMMIT DELETE - has an inconsistency window because we cannot change everything atomically
 /db/t/data/id.json                        <<< remove all versions
-/db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< remove all versions
-/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< remove all versions
+/db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< create tombstone, remove later
+/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< create tombstone, remove later
 /db/t/data/id.indices                     <<< remove all versions
 
 ```

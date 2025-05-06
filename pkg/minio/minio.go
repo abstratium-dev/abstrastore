@@ -24,6 +24,9 @@ import (
 
 const MINIO_META_PREFIX = "X-Amz-Meta-"
 const TX_FILENAME = "tx.json"
+const TOMBSTONE_AND_EXISTS_UNTIL = "Tombstone-And-Exists-Until" // wow, minio doesn't support camel case
+const MAX_TX_TIMEOUT_MICROS = 10 * 60 * 1000 * 1000 // 10 minutes
+const GC_ROOT = "gc/"
 
 var repo *MinioRepository
 
@@ -645,11 +648,30 @@ func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx contex
 		if object.Err != nil {
 			errors.Add(object.Err)
 		} else {
+			// last modified is used to ignore index entries that are created after the transaction started,
+			// since snapshot isolation requires that we see the state of the database as it was at the start 
+			// of the transaction, not afterwards.
 			lastModifiedFromMetadata := object.UserMetadata[MINIO_META_PREFIX+schema.LAST_MODIFIED]
 			lastModified, err := strconv.ParseInt(lastModifiedFromMetadata, 10, 64)
 			if err != nil {
 				errors.Add(err)
 			}
+
+			// tombstoned index entries are ones which no longer exist because of an update or delete, but
+			// which are left in place until they expire, so that transactions that started before the update
+			// can still use them.
+			tombstoneFromMetadata := object.UserMetadata[MINIO_META_PREFIX+TOMBSTONE_AND_EXISTS_UNTIL]
+			if tombstoneFromMetadata != "" {
+				tombstone, err := strconv.ParseInt(tombstoneFromMetadata, 10, 64)
+				if err != nil {
+					errors.Add(err)
+				}
+				if tombstone < transaction.StartMicroseconds {
+					// ignore tombstoned index entries - they are cleared away using the garbage collector
+					continue
+				}
+			}
+
 			if lastModified < transaction.StartMicroseconds {
 				// ignore other transactions that are still in progress
 				if !slices.Contains(transactionIdsToIgnore, object.UserMetadata[MINIO_META_PREFIX+schema.TX_ID]) {
@@ -790,6 +812,9 @@ func (r *MinioRepository) readObjectVersionForTransaction(ctx context.Context, t
 }
 
 func (r *MinioRepository) BeginTransaction(ctx context.Context, timeout time.Duration) (schema.Transaction, error) {
+	if timeout.Microseconds() > MAX_TX_TIMEOUT_MICROS {
+		return schema.Transaction{}, fmt.Errorf("timeout %d is too long, max is %d", timeout.Microseconds(), MAX_TX_TIMEOUT_MICROS)
+	}
 	tx := schema.NewTransaction(timeout)
 	err := r.updateTransaction(ctx, &tx)
 	if err != nil {
@@ -810,7 +835,6 @@ func (r *MinioRepository) updateTransaction(ctx context.Context, transaction *sc
 	}
 	opts := minio.PutObjectOptions{
 		ContentType: "application/json",
-
 	}
 	if transaction.Etag == "*" {
 		opts.SetMatchETagExcept(transaction.Etag)
@@ -880,16 +904,30 @@ func (r *MinioRepository) Commit(ctx context.Context, tx *schema.Transaction) []
 		step := tx.Steps[i]
 
 		if step.Type == "update-remove-index" {
-			opts := minio.RemoveObjectOptions{
-				ForceDelete: true,
-				GovernanceBypass: true,
-			}
-			if step.InitialVersionId != "" {
-				opts.VersionID = step.InitialVersionId
-			}
-			err := r.Client.RemoveObject(ctx, r.BucketName, step.Path, opts)
+			// turn it into a "tombstone" and mark it to be cleared up at a later date.
+			// it still needs to be around for any active transactions (potentially on different pods)
+			// so that we fulfil snapshot isolation, and they can find records as they were at the start
+			// of their transaction.
+
+			until := fmt.Sprintf("%d", time.Now().Add(MAX_TX_TIMEOUT_MICROS * time.Microsecond).UnixMicro())
+
+			// first create a garbage collection entry for the index
+			contents := []byte(step.Path)
+			gcPath := GC_ROOT + until
+			_, err := r.Client.PutObject(ctx, r.BucketName, gcPath, bytes.NewReader(contents), int64(len(contents)), minio.PutObjectOptions{})
 			if err != nil {
-				errs = append(errs, fmt.Errorf("ADB-0005 Failed to remove object at path %s, %w", step.Path, err))
+				errs = append(errs, fmt.Errorf("ADB-0016 Failed to put gc entry at path %s, %w", gcPath, err))
+			}
+
+			// then create the tombstone version of the index entry
+			step.UserMetadata[TOMBSTONE_AND_EXISTS_UNTIL] = until
+			opts := minio.PutObjectOptions{
+				ContentType: step.ContentType,
+				UserMetadata: step.UserMetadata,
+			}
+			_, err = r.Client.PutObject(ctx, r.BucketName, step.Path, bytes.NewReader([]byte("")), int64(0), opts)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("ADB-0005 Failed to put tombstone object at path %s, %w", step.Path, err))
 			}
 		} // else no others are touched during commit
 	}

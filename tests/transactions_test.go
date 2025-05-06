@@ -2091,7 +2091,8 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 
 	// ///////////////////////////////////////
 	// tx3 read using original name => success, 
-	// because still running, so sees snapshot
+	// because still running, so sees snapshot.
+	// mysql works like this!
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
 	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
@@ -2101,7 +2102,6 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	if err != nil {
 		t.Fatal(err)
 	}
-crap, this fails. we need to cache index searches?  
 	assert.Equal(1, len(*accountsRead))
 	assert.Equal(account1.Id, (*accountsRead)[0].Id)
 	assert.Equal(originalName, (*accountsRead)[0].Name)
@@ -2145,7 +2145,7 @@ crap, this fails. we need to cache index searches?
 	// tx4 select using second updated name => success
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedNameAgain).
 		Find(accountsRead)
@@ -2184,7 +2184,6 @@ crap, this fails. we need to cache index searches?
 }
 
 func TestTransactions_TODO(t *testing.T) {
-	assert.Fail(t, "TODO update twice, are updates by any other txs affected by tx1 having not added indices that are to be deleted, to reverse indices?")
 	assert.Fail(t, "TODO update with two fields to ensure that one is left intact")
 	assert.Fail(t, "TODO update")
 

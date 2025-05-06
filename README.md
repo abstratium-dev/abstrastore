@@ -115,6 +115,7 @@ git add --all && git commit -a -m'<comment>' && git tag v${VERS} && git push ori
 
 ## TODO
 
+- create background which fires somewhat randomly and deletes any files using contents of GC entries. see GC_ROOT constant and its use
 - PutObjectFanOut for writing multiple files at the same time? more efficient?
 -	how do deleted objects work in minio? when there is no data??
 - when committing/rolling back, we could update the file so that the exipiry time is set to in 100ms that way if the process were to die, another instance would very quickly complete the transaction

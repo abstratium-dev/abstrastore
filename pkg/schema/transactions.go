@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 )
 
-const TX_ID = "Txid" // wow, minio doesn't support camel case. the transaction id that wrote this version. used to check if the version needs to be ignored, if the transaction is still in progress.
-const LAST_MODIFIED = "Lastmodified" // wow, minio doesn't support camel case
+const TX_ID = "Tx-Id" // minio doesn't support camel case. the transaction id that wrote this version. used to check if the version needs to be ignored, if the transaction is still in progress.
+const LAST_MODIFIED = "Last-Modified" // minio doesn't support camel case
 const TIMESTAMP_ID_SEPARATOR = "___"
 const TRANSACTIONS_ROOT = "transactions/"
 
