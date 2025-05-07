@@ -443,9 +443,146 @@ func (r *MinioRepository) InsertIntoTable(ctx context.Context, transaction *sche
 // sql: update table_name set everything where id = ?
 // does an optimistically locked update on an entity.
 // If the ETag is wrong this method returns a StaleObjectError.
-// If the ETag is * which we interpret as meaning the object should not exist, but it does, then we return ObjectLockedError.
+// If the ETag is '*', it would be interpreted as meaning that no prior version may exist, i.e. an insert. Please call `insert` instead of `update` in this case.
+// If the ETag is an empty string we overwrite in all cases, whether a previous version exists or not. equivalent to "upsert"
 // If the object doesn't exist this method returns a NoSuchKeyError.
 func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any, etag *string) (*string, error) {
+
+	if err := transaction.IsOk(); err != nil {
+		return nil, err
+	}
+
+	if *etag == "*" {
+		return nil, fmt.Errorf("ADB0031 ETag is '*', which is not allowed for update, use insert instead.")
+	}
+
+	var err error
+
+	// //////////////////////////////////////////////////
+	// handle object
+	// //////////////////////////////////////////////////
+
+	// use reflection to fetch the value of the Id
+	var id string
+	id, err = getFieldValueAsString(entity, "Id")
+	if err != nil {
+		return nil, err
+	}
+
+	err = transaction.AddStep("update-data", "application/json", table.Path(id), *etag, &entity)
+	if err != nil {
+		return nil, err
+	}
+
+	// //////////////////////////////////////////////////
+	// read existing indices to decide which index files
+	// to keep
+	// //////////////////////////////////////////////////
+	object, err := r.Client.GetObject(ctx, r.BucketName, table.IndicesPath(id), minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer object.Close()
+	b, err := io.ReadAll(object)
+	if err != nil {
+		respErr := minio.ToErrorResponse(err)
+		if respErr.StatusCode == http.StatusNotFound && *etag == "" {
+			// OK - the user is trying to do an upsert, and the object doesn't exist, so it has no indices
+			b = []byte("\"\"") // empty json string
+		} else {
+			return nil, err
+		}
+	}
+	// it is a json string => convert back to a normal one
+	var existingIndicesAsString string
+	err = json.Unmarshal(b, &existingIndicesAsString)
+	if err != nil {
+		return nil, err
+	}
+	existingIndices := strings.Split(strings.TrimSpace(existingIndicesAsString), "\n")
+
+	// //////////////////////////////////////////////////
+	// add any indices that don't exist yet.
+	// at the same time *all* indices that should exist,
+	// for the reverse index file
+	// //////////////////////////////////////////////////
+	allIndicesRequiredAfterCommit := make([]string, 0, len(table.Indices))
+	for _, index := range table.Indices {
+		// use reflection to fetch the value of the field that the index is based on
+		value, err := getFieldValueAsString(entity, index.Field)
+		if err != nil {
+			return nil, err
+		}
+
+		indexPath := index.Path(value, id)
+		if !slices.Contains(existingIndices, indexPath) {
+			// ETag: "" - we need to overwrite
+			err = transaction.AddStep("update-add-index", "text/plain", indexPath, "", nil)
+			if err != nil {
+				return nil, err
+			}
+		} // else keep it
+
+		allIndicesRequiredAfterCommit = append(allIndicesRequiredAfterCommit, indexPath)
+	}
+
+	// //////////////////////////////////////////////////
+	// calculate which ones to delete
+	// //////////////////////////////////////////////////
+	for _, existingIndex := range existingIndices {
+		if !slices.Contains(allIndicesRequiredAfterCommit, existingIndex) {
+			if existingIndex != "" { // happens on upsert with no prior version (or maybe also when no fields are indexed?)
+				// ETag: "" - not relevant for deletion
+				err = transaction.AddStep("update-remove-index", "text/plain", existingIndex, "", nil)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	// //////////////////////////////////////////////////
+	// handle reverse indices
+	// //////////////////////////////////////////////////
+	// store all indices as they should be after the tx commits,
+	// so that future transactions can know what files to delete,
+	// just like this algorithm calculates above.
+	indicesPath := table.IndicesPath(id)
+	var indicesData any = strings.Join(allIndicesRequiredAfterCommit, "\n")
+	err = transaction.AddStep("update-reverse-indices", "text/plain", indicesPath, "", &indicesData) // Etag: "" - we need to overwrite the file and create a new version
+	if err != nil {
+		return nil, err
+	}
+
+	err = r.updateTransaction(ctx, transaction)
+	if err != nil {
+		return nil, err
+	}
+
+	// //////////////////////////////////////////////////
+	// execute the transaction steps
+	// //////////////////////////////////////////////////
+	var newEtag *string
+	newEtag, err = r.executeTransactionSteps(ctx, transaction, id, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	// update the transaction again, now that the ETags are known
+	// if this step fails, we can still rollback, because we use the meta data in such cases to find the right version to remove
+	err = r.updateTransaction(ctx, transaction)
+	if err != nil {
+		return nil, err
+	}
+
+	return newEtag, nil
+}
+
+// sql: delete from table_name where id = ?
+// does an optimistically locked delete on an entity.
+// If the ETag is wrong this method returns a StaleObjectError.
+// If the object doesn't exist this method does not return an error.
+func (r *MinioRepository) DeleteTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any, etag *string) (*string, error) {
 
 	if err := transaction.IsOk(); err != nil {
 		return nil, err
@@ -587,7 +724,7 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 		if step.InitialETag == "" {
 			// ignore, since the caller wants to overwrite in all cases
 		} else if step.InitialETag == "*" {
-			opts.SetMatchETagExcept(step.InitialETag)
+			opts.SetMatchETagExcept(step.InitialETag) // match anything except "everything" => fail if exists
 		} else {
 			opts.SetMatchETag(step.InitialETag)
 		}

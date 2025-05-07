@@ -633,6 +633,340 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	assert.Equal(account2, accountRead)
 }
 
+func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_WithWildcardETag(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
+	}
+
+	var etag *string
+	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag)
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	errs := repo.Commit(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx2)
+
+	// ///////////////////////////////////////
+	// tx2 update
+	// ///////////////////////////////////////
+	account1.Name = "Jane Doe Updated " + tx2.Id
+	wildcard := "*"
+	_, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, &wildcard)
+	if err != nil {
+		assert.Equal("ADB0031 ETag is '*', which is not allowed for update, use insert instead.", err.Error())
+	} else {
+		t.Fatal("no error")
+	}
+}
+
+func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_WithEmptyStringETag(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + tx1.Id, // helps with concurrent tests
+	}
+
+	var etag *string
+	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag)
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	errs := repo.Commit(context.Background(), &tx1)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx2)
+
+	// ///////////////////////////////////////
+	// tx2 update
+	// ///////////////////////////////////////
+	account1.Name = "Jane Doe Updated " + tx2.Id
+	updatedName := account1.Name
+	emptyString := ""
+	_, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, &emptyString)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 read - the update should have 
+	// worked, even with an empty string etag,
+	// as that means "write in all cases"
+	// ///////////////////////////////////////
+	var accountRead = &Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(updatedName, accountRead.Name)
+
+	// ///////////////////////////////////////
+	// tx2 commit
+	// ///////////////////////////////////////
+	errs = repo.Commit(context.Background(), &tx2)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 for reading
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx3)
+
+	// ///////////////////////////////////////
+	// can see object using id
+	// ///////////////////////////////////////
+	accountRead = &Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(updatedName, accountRead.Name)
+}
+
+func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Commit(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + uuid.New().String(), // helps with concurrent tests
+	}
+
+	// ///////////////////////////////////////
+	// tx2
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx2)
+
+	// ///////////////////////////////////////
+	// tx2 update with empty etag => upsert, 
+	// which in this case is an insert since 
+	// the object doesn't exist
+	// ///////////////////////////////////////
+	account1.Name = "Jane Doe Inserted " + tx2.Id
+	updatedName := account1.Name
+	emptyString := ""
+	_, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, &emptyString)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 read - the insert should have 
+	// worked, even with an empty string etag,
+	// as that means "write in all cases"
+	// ///////////////////////////////////////
+	var accountRead = &Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(updatedName, accountRead.Name)
+
+	// ///////////////////////////////////////
+	// tx2 commit
+	// ///////////////////////////////////////
+	errs := repo.Commit(context.Background(), &tx2)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 for reading
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx3)
+
+	// ///////////////////////////////////////
+	// can see object using id
+	// ///////////////////////////////////////
+	accountRead = &Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(updatedName, accountRead.Name)
+}
+
+func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Rollback(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
+
+	var account1 = &Account{
+		Id:   uuid.New().String(),
+		Name: "John Doe " + uuid.New().String(), // helps with concurrent tests
+	}
+
+	// ///////////////////////////////////////
+	// tx2
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx2)
+
+	// ///////////////////////////////////////
+	// tx2 update with empty etag => upsert, 
+	// which in this case is an insert since 
+	// the object doesn't exist
+	// ///////////////////////////////////////
+	account1.Name = "Jane Doe Inserted " + tx2.Id
+	updatedName := account1.Name
+	emptyString := ""
+	_, err = repo.UpdateTable(context.Background(), &tx2, T_ACCOUNT, account1, &emptyString)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 read - the insert should have 
+	// worked, even with an empty string etag,
+	// as that means "write in all cases"
+	// ///////////////////////////////////////
+	var accountRead = &Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(updatedName, accountRead.Name)
+
+	// ///////////////////////////////////////
+	// tx2 rollback
+	// ///////////////////////////////////////
+	errs := repo.Rollback(context.Background(), &tx2)
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 for reading
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx3)
+
+	// ///////////////////////////////////////
+	// cannot see object using id
+	// ///////////////////////////////////////
+	accountRead = &Account{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIdEquals(account1.Id).
+		Find(accountRead)
+	if err != nil {
+		assert.True(errors.Is(err, min.NoSuchKeyError))
+	} else {
+		t.Fatal("object should not exist")
+	}
+
+	// ///////////////////////////////////////
+	// cannot see object using index
+	// ///////////////////////////////////////
+	var accountsRead []*Account
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+		SelectFromTable(T_ACCOUNT).
+		WhereIndexedFieldEquals("Name", account1.Name).
+		Find(&accountsRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Empty(accountsRead)
+}
+
 func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndicesAreUpdated(t *testing.T) {
 	defer setupAndTeardown()()
 	assert := assert.New(t)
@@ -741,7 +1075,6 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 		t.Fatal(err)
 	}
 	assert.Equal(account1, accountRead)
-
 }
 
 func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIndicesAreOriginal(t *testing.T) {
@@ -2677,11 +3010,14 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 
 func TestTransactions_TODO(t *testing.T) {
 
+	assert.Fail(t, "TODO insert and update with no indexed fields, including commit / rollback")
+
+	assert.Fail(t, "TODO delete")
+
 	assert.Fail(t, "TODO relationships and reading Issue and Watch based on AccountId")
 	assert.Fail(t, "TODO relationships check rollback works with multiple inserts")
 // TODO do we need to document that there is no referential integrity? or do we enforce ref int when inserting we 
 // could check for existance of foreign keys, if DDL describes what to check for?
-	assert.Fail(t, "TODO delete")
 
 	assert.Fail(t, "TODO test rollback works when we were unable to write the final transaction file upon insert")
 	assert.Fail(t, "TODO t1 BeginDelete_T2BeginInsert_FailsWithStaleObject or something because the file still exists")
