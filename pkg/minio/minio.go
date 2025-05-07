@@ -253,14 +253,17 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) (*map[string]*st
 			}
 
 			var etag *string
-			etag, err = getByPath(f.ctx, f.repo, f.tx, path, f.template)
+			etag, existsInTx, err := getByPath(f.ctx, f.repo, f.tx, path, f.template)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
 				errors[i] = &err
-			} else {
+			} else if existsInTx {
 				results[i] = f.template
 				etags[coordinate.Id] = etag
+			} else {
+				results[i] = nil
+				etags[coordinate.Id] = nil
 			}
 		}(i, coordinate)
 	}
@@ -273,6 +276,10 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) (*map[string]*st
 
 	*destination = make([]*T, 0, len(results))
 	for _, result := range results {
+		if result == nil {
+			// happens after a delete that is not yet committed
+			continue
+		}
 		// need to double check that the object that was loaded actually really matches the predicate.
 		// that is because we cannot fully trust the indices - they still contain old entries in case other transactions
 		// need to find old versions of data, and they contain new entries, which while those should have been skipped
@@ -320,38 +327,55 @@ type FindByIdContainer[T any] struct {
 func (f FindByIdContainer[T]) Find(destination *T) (*string, error) {
 	path := f.table.Path(f.id)
 
-	return getByPath(f.ctx, f.repo, f.tx, path, destination)
-}
-
-func getByPath[T any](ctx context.Context, repo *MinioRepository, transaction *schema.Transaction, path string, destination *T) (*string, error) {
-	var etag *string
-	if err := transaction.IsOk(); err != nil {
+	etag, existsInTx, err := getByPath(f.ctx, f.repo, f.tx, path, destination)
+	if err != nil {
 		return nil, err
 	}
+	if !existsInTx {
+		return nil, &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
+	}
+	return etag, nil
+}
+
+// returns the ETag of the object, whether it exists in the transaction (false if the tx cache is explicitly nil), and an error if any occurred
+func getByPath[T any](ctx context.Context, repo *MinioRepository, transaction *schema.Transaction, path string, destination *T) (*string, bool, error) {
+	var etag *string
+	if err := transaction.IsOk(); err != nil {
+		return nil, false, err
+	}
 	if cached, ok := transaction.Cache[path]; ok {
-		etag = cached.ETag
-		val := *cached.Object
-		var t *T = val.(*T)
-		*destination = *t
+		if cached == nil {
+			return nil, false, nil
+		} else {
+			etag = cached.ETag
+			val := *cached.Object
+			var t *T = val.(*T)
+			*destination = *t
+		}
 	} else {
 		var objectData *[]byte
 		var err error
 		objectData, etag, err = repo.readObjectVersionForTransaction(ctx, transaction, path)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if objectData != nil {
+			if len(*objectData) == 0 {
+				// it has been deleted in the version that was found
+				transaction.Cache[path] = nil
+				return nil, false, &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
+			}
 			if err := json.Unmarshal(*objectData, destination); err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			// cache the result in case it is read again
 			var a any = destination
 			transaction.Cache[path] = &schema.ObjectAndETag{Object: &a, ETag: etag}
 		} else {
-			return nil, &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
+			return nil, false, &NoSuchKeyErrorWithDetails{Details: fmt.Sprintf("object %s does not exist", path)}
 		}
 	}
-	return etag, nil
+	return etag, true, nil
 }
 
 // sql: insert into table_name (column1, column2, column3, column4) values (value1, value2, value3, value4)
@@ -503,8 +527,8 @@ func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.T
 
 	// //////////////////////////////////////////////////
 	// add any indices that don't exist yet.
-	// at the same time *all* indices that should exist,
-	// for the reverse index file
+	// at the same time note *all* indices that should 
+	// exist, for the reverse index file
 	// //////////////////////////////////////////////////
 	allIndicesRequiredAfterCommit := make([]string, 0, len(table.Indices))
 	for _, index := range table.Indices {
@@ -581,11 +605,17 @@ func (r *MinioRepository) UpdateTable(ctx context.Context, transaction *schema.T
 // sql: delete from table_name where id = ?
 // does an optimistically locked delete on an entity.
 // If the ETag is wrong this method returns a StaleObjectError.
-// If the object doesn't exist this method does not return an error.
-func (r *MinioRepository) DeleteTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any, etag *string) (*string, error) {
+// If the ETag is '*', an error is returned.
+// If the object doesn't exist this method does NOT return an error.
+// Only the Id field of the entity is relevant.
+func (r *MinioRepository) DeleteFromTable(ctx context.Context, transaction *schema.Transaction, table schema.Table, entity any, etag *string) error {
 
 	if err := transaction.IsOk(); err != nil {
-		return nil, err
+		return err
+	}
+
+	if *etag == "*" {
+		return fmt.Errorf("ADB0032 ETag is '*', which is not allowed for delete.")
 	}
 
 	var err error
@@ -598,108 +628,81 @@ func (r *MinioRepository) DeleteTable(ctx context.Context, transaction *schema.T
 	var id string
 	id, err = getFieldValueAsString(entity, "Id")
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	err = transaction.AddStep("update-data", "application/json", table.Path(id), *etag, &entity)
+	err = transaction.AddStep("delete-data", "application/json", table.Path(id), *etag, nil) // nil entity, so that we create a tombstone
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// //////////////////////////////////////////////////
-	// read existing indices to decide which index files
-	// to keep
+	// read existing indices to know what to delete
 	// //////////////////////////////////////////////////
 	object, err := r.Client.GetObject(ctx, r.BucketName, table.IndicesPath(id), minio.GetObjectOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer object.Close()
 	b, err := io.ReadAll(object)
 	if err != nil {
-		return nil, err
+		respErr := minio.ToErrorResponse(err)
+		if respErr.StatusCode == http.StatusNotFound && *etag == "" {
+			// OK - can happen if already deleted
+			b = []byte("\"\"") // empty json string
+		} else {
+			return err
+		}
 	}
 	// it is a json string => convert back to a normal one
 	var existingIndicesAsString string
 	err = json.Unmarshal(b, &existingIndicesAsString)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	existingIndices := strings.Split(strings.TrimSpace(existingIndicesAsString), "\n")
-
-	// //////////////////////////////////////////////////
-	// add any indices that don't exist yet.
-	// at the same time *all* indices that should exist,
-	// for the reverse index file
-	// //////////////////////////////////////////////////
-	allIndicesRequiredAfterCommit := make([]string, 0, len(table.Indices))
-	for _, index := range table.Indices {
-		// use reflection to fetch the value of the field that the index is based on
-		value, err := getFieldValueAsString(entity, index.Field)
-		if err != nil {
-			return nil, err
-		}
-
-		indexPath := index.Path(value, id)
-		if !slices.Contains(existingIndices, indexPath) {
-			// ETag: "" - we need to overwrite
-			err = transaction.AddStep("update-add-index", "text/plain", indexPath, "", nil)
-			if err != nil {
-				return nil, err
-			}
-		} // else keep it
-
-		allIndicesRequiredAfterCommit = append(allIndicesRequiredAfterCommit, indexPath)
-	}
 
 	// //////////////////////////////////////////////////
 	// calculate which ones to delete
 	// //////////////////////////////////////////////////
 	for _, existingIndex := range existingIndices {
-		if !slices.Contains(allIndicesRequiredAfterCommit, existingIndex) {
-			// ETag: "" - not relevant for deletion
-			err = transaction.AddStep("update-remove-index", "text/plain", existingIndex, "", nil)
-			if err != nil {
-				return nil, err
-			}
+		// ETag: "" - not relevant for deletion
+		err = transaction.AddStep("delete-remove-index", "text/plain", existingIndex, "", nil)
+		if err != nil {
+			return err
 		}
 	}
 
 	// //////////////////////////////////////////////////
 	// handle reverse indices
 	// //////////////////////////////////////////////////
-	// store all indices as they should be after the tx commits,
-	// so that future transactions can know what files to delete,
-	// just like this algorithm calculates above.
 	indicesPath := table.IndicesPath(id)
-	var indicesData any = strings.Join(allIndicesRequiredAfterCommit, "\n")
-	err = transaction.AddStep("update-reverse-indices", "text/plain", indicesPath, "", &indicesData) // Etag: "" - we need to overwrite the file and create a new version
+	err = transaction.AddStep("delete-reverse-indices", "text/plain", indicesPath, "", nil) // Etag: "" - we need to overwrite the file and create a new version
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	err = r.updateTransaction(ctx, transaction)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// //////////////////////////////////////////////////
 	// execute the transaction steps
 	// //////////////////////////////////////////////////
-	var newEtag *string
-	newEtag, err = r.executeTransactionSteps(ctx, transaction, id, 0)
+	_, err = r.executeTransactionSteps(ctx, transaction, id, -1)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// update the transaction again, now that the ETags are known
 	// if this step fails, we can still rollback, because we use the meta data in such cases to find the right version to remove
 	err = r.updateTransaction(ctx, transaction)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return newEtag, nil
+	return nil
 }
 
 func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transaction *schema.Transaction, id string, indexOfStepForWhichToReturnETag int) (*string, error) {
@@ -740,7 +743,8 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 		TODO cannot remove with this request, can only put
 		*/
 	
-		if step.Type == "update-remove-index" {
+		if step.Type == "update-remove-index" ||
+			step.Type == "delete-remove-index" {
 			// left for the time being, removed on commit.
 			// that way, other transactions can still find the object based on the old index entries.i.e. snapshot isolation.
 		} else if step.Type == "insert-data" || // create new object
@@ -748,7 +752,9 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 				  step.Type == "insert-reverse-indices" || // create new object
 				  step.Type == "update-data" || // create new version of object
 				  step.Type == "update-add-index" || // create new object
-				  step.Type == "update-reverse-indices" { // create new version of object
+				  step.Type == "update-reverse-indices" || // create new version of object
+				  step.Type == "delete-data" || // create new version of object which is empty
+				  step.Type == "delete-reverse-indices" { // create new version of object which is empty
 
 			uploadInfo, err := r.Client.PutObject(ctx, r.BucketName, step.Path, bytes.NewReader(*step.Data), int64(len(*step.Data)), opts)
 			if err != nil {
@@ -778,7 +784,7 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 							}
 						}	
 						return nil, &DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("object %s already exists", step.Path)}
-					} else if step.InitialETag != "" { // not "can be anything", i.e. must match, i.e. an update (or delete?)
+					} else if step.InitialETag != "" { // not "can be anything", i.e. must match, i.e. an update or delete
 						return nil, &StaleObjectErrorWithDetails[any]{Details: fmt.Sprintf("object %s is stale. Reload and try again. Note, a different transaction that is also in progress may be writing to this object.", step.Path), Object: step.Entity}
 					}
 				}
@@ -805,7 +811,11 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 		} else if (step.Type == "update-data") {
 			transaction.Cache[step.Path] = &schema.ObjectAndETag{Object: step.Entity, ETag: step.FinalETag}
 
-		// insert and new update indices are added
+		// deleted data are removed
+		} else if (step.Type == "delete-data") {
+			transaction.Cache[step.Path] = nil
+
+		// insert and new update indices are added (delete never adds indices)
 		// yes, indices are also cached, since we add from the cache when inspecting the index entries
 		} else if (step.Type == "insert-add-index") {
 			transaction.Cache[step.Path] = &schema.ObjectAndETag{Object: step.Entity, ETag: step.FinalETag}
@@ -815,10 +825,13 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 		// old update indices are removed, because we shouldn't find entries based on old indices, at least not within the current transaction that change the index
 		} else if (step.Type == "update-remove-index") {
 			transaction.Cache[step.Path] = nil
+		} else if (step.Type == "delete-remove-index") {
+			transaction.Cache[step.Path] = nil
 
 		// reverse indices are not added
 		} else if (step.Type == "insert-reverse-indices") {
 		} else if (step.Type == "update-reverse-indices") {
+		} else if (step.Type == "delete-reverse-indices") {
 
 		} else {
 			return nil, fmt.Errorf("ADB-0003 Unexpected transaction step type %s, please contact abstratrium", step.Type)

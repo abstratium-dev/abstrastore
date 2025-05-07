@@ -311,9 +311,9 @@ func TestTransactions_BeginInsertRollback(t *testing.T) {
 		Find(accountRead)
 	if err != nil {
 		assert.True(errors.Is(err, min.NoSuchKeyError))
-		return
+	} else {
+		t.Fatal("no error was returned")
 	}
-	t.Fatal("no error was returned")
 }
 
 // because we optimistically lock, and assume that transactions will commit, this test shows how the framework fails fast
@@ -501,9 +501,9 @@ func TestTransactions_T1BeginInsert_T2BeginRead_ShouldNotSeeNonCommittedObject_B
 		Find(accountRead)
 	if err != nil {
 		assert.True(errors.Is(err, min.NoSuchKeyError))
-		return
+	} else {
+		t.Fatal("should have failed to read")
 	}
-	t.Fatal("should have failed to read")
 
 	// ///////////////////////////////////////
 	// tx1 can of course still see it!
@@ -525,6 +525,9 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 
 	repo := getRepo()
 
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
 	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -538,6 +541,9 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
 	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
@@ -553,7 +559,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	}()
 
 	// ///////////////////////////////////////
-	// tx2
+	// tx2 begin
 	// ///////////////////////////////////////
 	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
@@ -561,7 +567,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	}
 
 	// ///////////////////////////////////////
-	// tx2 inserts
+	// tx2 insert
 	// ///////////////////////////////////////
 	var account2 = &Account{
 		Id:   uuid.New().String(),
@@ -574,7 +580,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	assert.NotEmpty(etag)
 
 	// ///////////////////////////////////////
-	// tx2 commits
+	// tx2 commit
 	// ///////////////////////////////////////
 	errs := repo.Commit(context.Background(), &tx2)
 	if len(errs) != 0 {
@@ -591,9 +597,9 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 		Find(accountRead)
 	if err != nil {
 		assert.True(errors.Is(err, min.NoSuchKeyError))
-		return
+	} else {
+		t.Fatal("should have failed to read")
 	}
-	t.Fatal("should have failed to read")
 
 	// //////////////////////////////////////////////////////////////////////////////
 	// tx1 must not see the committed object inserted by tx2, by index
@@ -609,7 +615,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	assert.Equal(0, len(*accountsRead))
 
 	// ///////////////////////////////////////
-	// tx3 can of course still see it!
+	// tx3 can of course see the tx2 object!
 	// ///////////////////////////////////////
 	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
@@ -617,15 +623,15 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	}
 
 	defer func() {
-		err := repo.Commit(context.Background(), &tx3)
-		if err != nil {
-			t.Fatal(err)
+		errs := repo.Commit(context.Background(), &tx3)
+		if len(errs) != 0 {
+			t.Fatal(errs)
 		}
 	}()
 
 	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
 		SelectFromTable(T_ACCOUNT).
-		WhereIdEquals(account1.Id).
+		WhereIdEquals(account2.Id).
 		Find(accountRead)
 	if err != nil {
 		t.Fatal(err)
@@ -1432,9 +1438,9 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 		Find(accountRead)
 	if err != nil {
 		assert.True(errors.Is(err, min.NoSuchKeyError))
-		return
+	} else {
+		t.Fatal("no error was returned")
 	}
-	t.Fatal("no error was returned")
 }
 
 func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleUpdates(t *testing.T) {
@@ -3008,12 +3014,216 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	assert.Equal(0, len(*issuesRead))
 }
 
+func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSelect_T4AfterT2CommitCannotSee(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ISSUE := schema.NewTable(DATABASE, "issue", []string{"Title", "Body"}) // both are indexed
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var issue = &Issue{
+		Id:   uuid.New().String(),
+		Title: "Title " + tx1.Id, // helps with concurrent tests
+		Body: "Body " + tx1.Id,
+	}
+	originalTitle := issue.Title
+
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
+	var etag1 *string
+	etag1, err = repo.InsertIntoTable(context.Background(), &tx1, T_ISSUE, issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag1)
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx1); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 begin for reading
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx2)
+
+	// ///////////////////////////////////////
+	// tx3 begin for delete
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 delete
+	// ///////////////////////////////////////
+	err = repo.DeleteFromTable(context.Background(), &tx3, T_ISSUE, issue, etag1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 can no longer see object by index
+	// ///////////////////////////////////////
+	issuesRead := &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", originalTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+
+	// ///////////////////////////////////////
+	// tx3 can no longer see object by id
+	// ///////////////////////////////////////
+	issueRead := &Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals(issue.Id).
+		Find(issueRead)
+	if err != nil {
+		assert.True(errors.Is(err, min.NoSuchKeyError))
+	} else {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 can still see object by index
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", originalTitle).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(originalTitle, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx2 can still see object by id
+	// ///////////////////////////////////////
+	issueRead = &Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals(issue.Id).
+		Find(issueRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(issue.Id, issueRead.Id)
+	assert.Equal(originalTitle, issueRead.Title)
+	assert.Equal(issue.Body, issueRead.Body)
+
+	// ///////////////////////////////////////
+	// tx3 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx3); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 can still see object by index
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Body", issue.Body).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(1, len(*issuesRead))
+	assert.Equal(issue.Id, (*issuesRead)[0].Id)
+	assert.Equal(originalTitle, (*issuesRead)[0].Title)
+	assert.Equal(issue.Body, (*issuesRead)[0].Body)
+
+	// ///////////////////////////////////////
+	// tx2 can still see object by id 
+	// ///////////////////////////////////////
+	issueRead = &Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals(issue.Id).
+		Find(issueRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(issue.Id, issueRead.Id)
+	assert.Equal(originalTitle, issueRead.Title)
+	assert.Equal(issue.Body, issueRead.Body)
+
+	// ///////////////////////////////////////
+	// tx4 begin for reading
+	// ////////////////////////////	///////////
+	tx4, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx4)
+
+	// ///////////////////////////////////////
+	// tx4 cannot see object by id
+	// ///////////////////////////////////////
+	issueRead = &Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals(issue.Id).
+		Find(issueRead)
+	if err != nil {
+		assert.True(errors.Is(err, min.NoSuchKeyError))
+	} else {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx4 cannot see object by index
+	// ///////////////////////////////////////
+	issuesRead = &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Body", issue.Body).
+		Find(issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(*issuesRead))
+}
+
 func TestTransactions_TODO(t *testing.T) {
 
-	assert.Fail(t, "TODO insert and update with no indexed fields, including commit / rollback")
+	assert.Fail(t, "TODO insert and update with NO indexed fields, including commit / rollback")
 
-	assert.Fail(t, "TODO delete")
-
+	assert.Fail(t, "TODO delete non-existant id")
+	assert.Fail(t, "TODO double delete")
+	assert.Fail(t, "TODO delete wildcard etag fails")
+	assert.Fail(t, "TODO delete empty etag works whether exist or not")
+	assert.Fail(t, "TODO delete insert delete again")
+	assert.Fail(t, "TODO delete update delete again")
+	
 	assert.Fail(t, "TODO relationships and reading Issue and Watch based on AccountId")
 	assert.Fail(t, "TODO relationships check rollback works with multiple inserts")
 // TODO do we need to document that there is no referential integrity? or do we enforce ref int when inserting we 
@@ -3026,6 +3236,7 @@ func TestTransactions_TODO(t *testing.T) {
 	assert.Fail(t, "TODO upsert and impact on indices")
 
 	assert.Fail(t, "TODO range scans")
+	assert.Fail(t, "TODO what have we not tested yet? => measure coverage")
 
 	// range scans
 	// Range conditions are comparisons like: >, <, >=, <=, BETWEEN, or a partial match like LIKE 'abc%'

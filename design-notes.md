@@ -73,7 +73,7 @@ UPDATE (field value of field name 2 changes)
 /db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< leave this file alone, the field value didn't change
 /db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< leave this for the moment, since other txs must still find using old value. step=update-remove-index, de-cached
 /db/t/indices/fn2/fv'[:2]/fv'/db___t___id <<< write file (the field value changed and this is the new index entry)**, step=update-add-index, cached
-/db/t/data/id.indices                     <<< write new version of file containing new indices that would need modifying on UD*
+/db/t/data/id.indices                     <<< write new version of file containing new indices that would need modifying on Update/Delete*, step=update-reverse-indices
 
 * should it contain just fn1/fv and fn2/fv', or all three and be updated on commit? the nice thing is that no one else can see the latest version of the actual object and so they cannot get its etag and so they cannot update it. the only one able to update it again is the current transaction. the version of the actual object with the updated field cannot be selected because it's not committed yet and that version belongs to an open transaction and so will be ignored by all other transactions. Store the indices that will be needed if the transaction is committed. If it isn't committed,
 rollback this file to the version that existed before the transaction started. If the transaction updates twice, it
@@ -97,23 +97,23 @@ COMMIT UPDATE
 
 
 DELETE
-/db/t/data/id.json                        <<< create tombstone*
-/db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< leave this for the moment, since other txs must still find using old value
-/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< leave this for the moment, since other txs must still find using old value
-/db/t/data/id.indices                     <<< write new version with no content?
+/db/t/data/id.json                        <<< create tombstone*, step=delete-data, cached
+/db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< leave this for the moment, since other txs must still find using old value, step=delete-remove-index, decached
+/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< leave this for the moment, since other txs must still find using old value, step=delete-remove-index, decached
+/db/t/data/id.indices                     <<< write new version with no content, step=delete-reverse-indices
 
 * other tx can then still read this, by reading an old version and ignoring this non-committed version
 
 ROLLBACK DELETE
-/db/t/data/id.json                        <<< remove empty version created above
+/db/t/data/id.json                        <<< remove empty version created above, step=delete-data
 /db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< nothing to do
 /db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< nothing to do
-/db/t/data/id.indices                     <<< remove newly created version
+/db/t/data/id.indices                     <<< remove newly created version, step=delete-reverse-indices
 
 COMMIT DELETE - has an inconsistency window because we cannot change everything atomically
 /db/t/data/id.json                        <<< remove all versions
-/db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< create tombstone, remove later
-/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< create tombstone, remove later
+/db/t/indices/fn1/fv[:2]/fv/db___t___id   <<< create tombstone, remove later, step=delete-remove-index
+/db/t/indices/fn2/fv[:2]/fv/db___t___id   <<< create tombstone, remove later, step=delete-remove-index
 /db/t/data/id.indices                     <<< remove all versions
 
 ```
