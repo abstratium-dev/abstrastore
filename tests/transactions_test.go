@@ -3400,10 +3400,151 @@ func TestTransactions_InsertUpdateNotIndicies(t *testing.T) {
 	}
 }
 
+func TestTransactions_SelectAndDeleteNonExistantId(t *testing.T) {
+	defer setupAndTeardown()()
+
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ISSUE := schema.NewTable(DATABASE, "issue", []string{}) // no indexed fields
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx1)
+
+	// ///////////////////////////////////////
+	// tx1 select by id
+	// ///////////////////////////////////////
+	issueRead := &Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals("non-existant-id").
+		Find(issueRead)
+	if err != nil {
+		assert.True(errors.Is(err, min.NoSuchKeyError))
+	} else {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 delete
+	// ///////////////////////////////////////
+	emptyEtag := ""
+	err = repo.DeleteFromTable(context.Background(), &tx1, T_ISSUE, &Issue{Id: "non-existant-id"}, &emptyEtag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// no error expected
+}
+
+func TestTransactions_DoubleDelete(t *testing.T) {
+	defer setupAndTeardown()()
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ISSUE := schema.NewTable(DATABASE, "issue", []string{}) // no indexed fields
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
+	issue := &Issue{
+		Id:   uuid.NewString(),
+		Title: "Title",
+		Body: "Body",
+	}
+	etag, err := repo.InsertIntoTable(context.Background(), &tx1, T_ISSUE, issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 delete
+	// ///////////////////////////////////////
+	err = repo.DeleteFromTable(context.Background(), &tx1, T_ISSUE, issue, etag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// no error expected
+
+	// ///////////////////////////////////////
+	// tx1 delete again
+	// ///////////////////////////////////////
+	*etag = "" // to allow second delete, otherwise etag is wrong, since delete caused a tombstone and its etag isn't exposed
+	err = repo.DeleteFromTable(context.Background(), &tx1, T_ISSUE, issue, etag)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx1); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+}
+
+func TestTransactions_WildcardETagDeleteFails(t *testing.T) {
+	defer setupAndTeardown()()
+
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ISSUE := schema.NewTable(DATABASE, "issue", []string{}) // no indexed fields
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx1)
+
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
+	issue := &Issue{
+		Id:   uuid.NewString(),
+		Title: "Title",
+		Body: "Body",
+	}
+	etag, err := repo.InsertIntoTable(context.Background(), &tx1, T_ISSUE, issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 delete
+	// ///////////////////////////////////////
+	*etag = "*"
+	err = repo.DeleteFromTable(context.Background(), &tx1, T_ISSUE, issue, etag)
+	if err != nil {
+		assert.Equal("ADB0032 ETag is '*', which is not allowed for delete.", err.Error())
+	} else {
+		t.Fatal("expected error")
+	}
+}
+
 func TestTransactions_TODO(t *testing.T) {
 
-	assert.Fail(t, "TODO delete non-existant id")
-	assert.Fail(t, "TODO double delete")
 	assert.Fail(t, "TODO delete wildcard etag fails")
 	assert.Fail(t, "TODO delete empty etag works whether exist or not")
 	assert.Fail(t, "TODO delete insert delete again")
@@ -3420,6 +3561,7 @@ func TestTransactions_TODO(t *testing.T) {
 
 	assert.Fail(t, "TODO upsert and impact on indices")
 
+	assert.Fail(t, "TODO insert two objects with same index - well, partial match, and then search with partial matches")
 	assert.Fail(t, "TODO range scans")
 	assert.Fail(t, "TODO what have we not tested yet? => measure coverage")
 

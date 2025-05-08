@@ -656,9 +656,13 @@ func (r *MinioRepository) DeleteFromTable(ctx context.Context, transaction *sche
 	}
 	// it is a json string => convert back to a normal one
 	var existingIndicesAsString string
-	err = json.Unmarshal(b, &existingIndicesAsString)
-	if err != nil {
-		return err
+	if len(b) == 0 {
+		existingIndicesAsString = ""
+	} else {
+		err = json.Unmarshal(b, &existingIndicesAsString)
+		if err != nil {
+			return err
+		}
 	}
 	existingIndices := strings.Split(strings.TrimSpace(existingIndicesAsString), "\n")
 
@@ -666,6 +670,10 @@ func (r *MinioRepository) DeleteFromTable(ctx context.Context, transaction *sche
 	// calculate which ones to delete
 	// //////////////////////////////////////////////////
 	for _, existingIndex := range existingIndices {
+		if existingIndex == "" { // happens when double deletion occurs and existingIndices is an empty string
+			continue
+		}
+
 		// ETag: "" - not relevant for deletion
 		err = transaction.AddStep("delete-remove-index", "text/plain", existingIndex, "", nil)
 		if err != nil {
