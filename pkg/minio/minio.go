@@ -776,6 +776,7 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 						if err != nil {
 							return nil, err
 						}
+						latestVersionSize := int64(-1)
 						for object := range r.Client.ListObjects(ctx, r.BucketName, minio.ListObjectsOptions{
 							Prefix: step.Path,
 							WithVersions: true,
@@ -784,19 +785,33 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 							if object.Err != nil {
 								return nil, object.Err
 							}
+							if latestVersionSize == -1 {
+								latestVersionSize = object.Size
+							}
 							objectTxId := object.UserMetadata[MINIO_META_PREFIX+schema.TX_ID]
 							for id, timeoutMicros := range transactionsInProgress {
 								if id == objectTxId {
 									return nil, &ObjectLockedErrorWithDetails[any]{Details: fmt.Sprintf("Object %s has already been written by transaction %s, which is set to expire by %d. Reload and try again.", step.Path, objectTxId, timeoutMicros), Object: step.Entity, DueByMsEpoch: timeoutMicros}
 								}
 							}
-						}	
-						return nil, &DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("object %s already exists", step.Path)}
+						}
+						if latestVersionSize == 0 {
+							// it has been deleted, but the tombstone has not yet been cleared away.
+							// try inserting again, this time with no etag restrictions, since the tombstone is not relevant for the insert
+							opts.SetMatchETagExcept("this-etag-never-exists")
+							uploadInfo, err = r.Client.PutObject(ctx, r.BucketName, step.Path, bytes.NewReader(*step.Data), int64(len(*step.Data)), opts)
+							if err != nil {
+								return nil, fmt.Errorf("ADB-0020 failed to put object with Id %s to path %s: %w", id, step.Path, err)
+							}
+						} else {
+							return nil, &DuplicateKeyErrorWithDetails{Details: fmt.Sprintf("object %s already exists", step.Path)}
+						}
 					} else if step.InitialETag != "" { // not "can be anything", i.e. must match, i.e. an update or delete
 						return nil, &StaleObjectErrorWithDetails[any]{Details: fmt.Sprintf("object %s is stale. Reload and try again. Note, a different transaction that is also in progress may be writing to this object.", step.Path), Object: step.Entity}
 					}
+				} else {
+					return nil, fmt.Errorf("ADB-0019 failed to put object with Id %s to path %s: %w", id, step.Path, err)
 				}
-				return nil, fmt.Errorf("ADB-0019 failed to put object with Id %s to path %s: %w", id, step.Path, err)
 			}
 	
 			// update, so that commit/rollback can be more efficient
@@ -1201,7 +1216,9 @@ func (r *MinioRepository) Rollback(ctx context.Context, tx *schema.Transaction) 
 		if step.Type == "insert-data" || // remove the newly inserted version of the object
 		   step.Type == "insert-reverse-indices" || // exists for the object key, containing the current list of index files - remove version that was added
 		   step.Type == "update-data" || // remove the version that was updated
-		   step.Type == "update-reverse-indices" { // exists for the object key, containing the current list of index files - remove version that was added
+		   step.Type == "update-reverse-indices" || // exists for the object key, containing the current list of index files - remove version that was added
+		   step.Type == "delete-data" || // remove the version that was deleted (the tombstone)
+		   step.Type == "delete-reverse-indices" { // was emptied upon delete - remove that version
 			
 			// ok, there really should only ever be one version, but let's be paranoid in the case that we were unable to
 			// update the transaction after putting objects. or a better example: two updates in a transaction where the

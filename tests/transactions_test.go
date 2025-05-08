@@ -680,7 +680,12 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_WithWildcardETag(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx2)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx2)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx2 update
@@ -736,7 +741,6 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_WithEmptyStringETag(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx2)
 
 	// ///////////////////////////////////////
 	// tx2 update
@@ -779,7 +783,12 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_WithEmptyStringETag(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// can see object using id
@@ -816,7 +825,6 @@ func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Commi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx2)
 
 	// ///////////////////////////////////////
 	// tx2 update with empty etag => upsert, 
@@ -861,7 +869,12 @@ func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Commi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// can see object using id
@@ -898,7 +911,6 @@ func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Rollb
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx2)
 
 	// ///////////////////////////////////////
 	// tx2 update with empty etag => upsert, 
@@ -943,7 +955,12 @@ func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Rollb
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// cannot see object using id
@@ -1040,7 +1057,12 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// cannot see object using old index entry
@@ -1089,11 +1111,13 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 
 	repo := getRepo()
 
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
 	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx1)
 
 	DATABASE := schema.NewDatabase("transactions-tests")
 	T_ACCOUNT := schema.NewTable(DATABASE, "account", []string{"Name"})
@@ -1103,6 +1127,9 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 		Name: "John Doe " + tx1.Id, // helps with concurrent tests
 	}
 
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
 	var etag *string
 	etag, err = repo.InsertIntoTable(context.Background(), &tx1, T_ACCOUNT, account1)
 	if err != nil {
@@ -1110,6 +1137,9 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	}
 	assert.NotEmpty(etag)
 
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
 	errs := repo.Commit(context.Background(), &tx1)
 	if len(errs) != 0 {
 		t.Fatal(errs)
@@ -1152,7 +1182,12 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// cannot see object using new index entry
@@ -1263,7 +1298,12 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx2)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx2)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// cannot see object using old index entry
@@ -1387,7 +1427,12 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx2)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx2)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// cannot see object using middle index entry
@@ -1527,7 +1572,12 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// cannot see object using middle index entry
@@ -1646,7 +1696,12 @@ func TestTransactions_T1BeginInsertCommit_T2Update_T3UpdateFailsFast_T2Commit_Ch
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx3 read in order to update
@@ -1660,7 +1715,6 @@ func TestTransactions_T1BeginInsertCommit_T2Update_T3UpdateFailsFast_T2Commit_Ch
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
 
 	// ///////////////////////////////////////
 	// tx3 update that should fail
@@ -1688,7 +1742,12 @@ func TestTransactions_T1BeginInsertCommit_T2Update_T3UpdateFailsFast_T2Commit_Ch
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx4)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx4)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// cannot see object using old index entry
@@ -1760,7 +1819,12 @@ func TestTransactions_T0Begin_T1BeginInsertCommit_T0CannotSeeObjectFromT1(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx0)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx0)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	var account1 = &Account{
 		Id:   uuid.New().String(),
@@ -1837,7 +1901,12 @@ func TestTransactions_T0Begin_T1BeginInsertUpdate_T0CannotSeeObjectFromT1(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx0)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx0)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	var account1 = &Account{
 		Id:   uuid.New().String(),
@@ -1924,7 +1993,12 @@ func TestTransactions_T1BeginInsertUpdate_T1CanSeeOwnVersion_T2BeginCannotSeeT1(
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx1)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx1)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	var account1 = &Account{
 		Id:   uuid.New().String(),
@@ -1987,7 +2061,12 @@ func TestTransactions_T1BeginInsertUpdate_T1CanSeeOwnVersion_T2BeginCannotSeeT1(
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx2)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx2)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx2 cannot see object using id
@@ -2033,7 +2112,12 @@ func TestTransactions_T1BeginInsertUpdate_CheckETagsAreCorrectOnReading(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx1)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx1)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	var account1 = &Account{
 		Id:   uuid.New().String(),
@@ -2142,7 +2226,12 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginRead_CheckETagsAr
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx2)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx2)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx2 update
@@ -2162,7 +2251,12 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginRead_CheckETagsAr
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx3 check read etag matches committed version since tx3 is after tx2 and tx2 isn't committed yet
@@ -2268,7 +2362,12 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx3 read using original name => success
@@ -2478,7 +2577,12 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx4)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx4)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx4 select using second updated name => success
@@ -2538,7 +2642,12 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx0)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx0)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx1 begin
@@ -2656,7 +2765,12 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx3)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx3 read using original title => success
@@ -2953,7 +3067,12 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx4)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx4)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx4 select using second updated title => success
@@ -3062,7 +3181,12 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx2)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx2)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx3 begin for delete
@@ -3183,7 +3307,12 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx4)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx4)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx4 cannot see object by id
@@ -3383,7 +3512,12 @@ func TestTransactions_InsertUpdateNotIndicies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx4)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx4)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx4 select by id
@@ -3417,7 +3551,12 @@ func TestTransactions_SelectAndDeleteNonExistantId(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx1)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx1)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx1 select by id
@@ -3516,7 +3655,12 @@ func TestTransactions_WildcardETagDeleteFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Rollback(context.Background(), &tx1)
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx1)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
 
 	// ///////////////////////////////////////
 	// tx1 insert
@@ -3543,11 +3687,192 @@ func TestTransactions_WildcardETagDeleteFails(t *testing.T) {
 	}
 }
 
+func TestTransactions_EmptyETagDeleteWorksIfExistsAndNotExists(t *testing.T) {
+	defer setupAndTeardown()()
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ISSUE := schema.NewTable(DATABASE, "issue", []string{}) // no indexed fields
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
+	issue := &Issue{
+		Id:   uuid.NewString(),
+		Title: "Title",
+		Body: "Body",
+	}
+	etag, err := repo.InsertIntoTable(context.Background(), &tx1, T_ISSUE, issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 delete
+	// ///////////////////////////////////////
+	*etag = ""
+	err = repo.DeleteFromTable(context.Background(), &tx1, T_ISSUE, issue, etag)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx1); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 begin
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx2)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
+
+	// ///////////////////////////////////////
+	// tx2 delete non-existant, empty etag
+	// ///////////////////////////////////////
+	emptyEtag := ""
+	err = repo.DeleteFromTable(context.Background(), &tx2, T_ISSUE, issue, &emptyEtag)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+
+func TestTransactions_T1BeginDelete_T2Begin_T1Commit_T2InsertCommit(t *testing.T) {
+	defer setupAndTeardown()()
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ISSUE := schema.NewTable(DATABASE, "issue", []string{"Title"})
+
+	// ///////////////////////////////////////
+	// tx0 begin
+	// ///////////////////////////////////////
+	tx0, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx0 insert
+	// ///////////////////////////////////////
+	issue := &Issue{
+		Id:   uuid.NewString(),
+		Title: "Title " + tx0.Id,
+		Body: "Body",
+	}
+	etag, err := repo.InsertIntoTable(context.Background(), &tx0, T_ISSUE, issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx0 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx0); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 delete
+	// ///////////////////////////////////////
+	*etag = ""
+	err = repo.DeleteFromTable(context.Background(), &tx1, T_ISSUE, issue, etag)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 begin
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx1); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 insert
+	// ///////////////////////////////////////
+	etag, err = repo.InsertIntoTable(context.Background(), &tx2, T_ISSUE, issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx2); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 begin for reading
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
+
+	// ///////////////////////////////////////
+	// tx3 read
+	// ///////////////////////////////////////
+	issuesRead := []*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, issue).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", issue.Title).
+		Find(&issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 1, len(issuesRead))
+	assert.Equal(t, issue.Title, issuesRead[0].Title)
+	assert.Equal(t, issue.Body, issuesRead[0].Body)
+	assert.Equal(t, issue.CreatedBy, issuesRead[0].CreatedBy)
+}
+
 func TestTransactions_TODO(t *testing.T) {
 
-	assert.Fail(t, "TODO delete wildcard etag fails")
-	assert.Fail(t, "TODO delete empty etag works whether exist or not")
-	assert.Fail(t, "TODO delete insert delete again")
 	assert.Fail(t, "TODO delete update delete again")
 	
 	assert.Fail(t, "TODO relationships and reading Issue and Watch based on AccountId")
@@ -3557,7 +3882,6 @@ func TestTransactions_TODO(t *testing.T) {
 
 	assert.Fail(t, "TODO test rollback works when we were unable to write the final transaction file upon insert")
 	assert.Fail(t, "TODO t1 BeginDelete_T2BeginInsert_FailsWithStaleObject or something because the file still exists")
-	assert.Fail(t, "TODO t1 BeginDelete_T2Begin_T1Commit_T2InsertCommit should work fine")
 
 	assert.Fail(t, "TODO upsert and impact on indices")
 
