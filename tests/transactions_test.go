@@ -3213,6 +3213,193 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	assert.Equal(0, len(*issuesRead))
 }
 
+func TestTransactions_InsertUpdateNotIndicies(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ISSUE := schema.NewTable(DATABASE, "issue", []string{}) // no indexed fields
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var issue = &Issue{
+		Id:   uuid.New().String(),
+		Title: "Title " + tx1.Id, // helps with concurrent tests
+		Body: "Body " + tx1.Id,
+	}
+	originalTitle := issue.Title
+
+	// ///////////////////////////////////////
+	// tx1 insert
+	// ///////////////////////////////////////
+	var etag1 *string
+	etag1, err = repo.InsertIntoTable(context.Background(), &tx1, T_ISSUE, issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotEmpty(etag1)
+
+	// ///////////////////////////////////////
+	// tx1 select by title - not indexed
+	// ///////////////////////////////////////
+	issuesRead := &[]*Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldEquals("Title", originalTitle).
+		Find(issuesRead)
+	if err != nil {
+		assert.Equal("ADB-0033 no such index: Title", err.Error())
+	} else {
+		t.Fatal("no error")
+	}
+
+	// ///////////////////////////////////////
+	// tx1 select by id
+	// ///////////////////////////////////////
+	issueRead := &Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals(issue.Id).
+		Find(issueRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(issue.Id, issueRead.Id)
+	assert.Equal(originalTitle, issueRead.Title)
+	assert.Equal(issue.Body, issueRead.Body)
+
+	// ///////////////////////////////////////
+	// tx1 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx1); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 begin for reading and update
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 select by id
+	// ///////////////////////////////////////
+	issueRead = &Issue{}
+	etag2, err := min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals(issue.Id).
+		Find(issueRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(issue.Id, issueRead.Id)
+	assert.Equal(originalTitle, issueRead.Title)
+	assert.Equal(issue.Body, issueRead.Body)
+
+	// ///////////////////////////////////////
+	// tx2 update
+	// ///////////////////////////////////////
+	issueRead.Title = "Title " + tx2.Id
+	updatedTitle := issueRead.Title
+	_, err = repo.UpdateTable(context.Background(), &tx2, T_ISSUE, issueRead, etag2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx2 select by id
+	// ///////////////////////////////////////
+	issueRead = &Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals(issue.Id).
+		Find(issueRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(issue.Id, issueRead.Id)
+	assert.Equal(updatedTitle, issueRead.Title)
+	assert.Equal(issue.Body, issueRead.Body)
+
+	// ///////////////////////////////////////
+	// tx2 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx2); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 begin for delete
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 select by id for delete
+	// ///////////////////////////////////////
+	issueRead = &Issue{}
+	etag2, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals(issue.Id).
+		Find(issueRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(issue.Id, issueRead.Id)
+	assert.Equal(updatedTitle, issueRead.Title)
+	assert.Equal(issue.Body, issueRead.Body)
+
+	// ///////////////////////////////////////
+	// tx3 delete 
+	// ///////////////////////////////////////
+	err = repo.DeleteFromTable(context.Background(), &tx3, T_ISSUE, issueRead, etag2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx3 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx3); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx4 begin for reading
+	// ///////////////////////////////////////
+	tx4, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Rollback(context.Background(), &tx4)
+
+	// ///////////////////////////////////////
+	// tx4 select by id
+	// ///////////////////////////////////////
+	issueRead = &Issue{}
+	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+		SelectFromTable(T_ISSUE).
+		WhereIdEquals(issue.Id).
+		Find(issueRead)
+	if err != nil {
+		assert.True(errors.Is(err, min.NoSuchKeyError))
+	} else {
+		t.Fatal(err)
+	}
+}
+
 func TestTransactions_TODO(t *testing.T) {
 
 	assert.Fail(t, "TODO insert and update with NO indexed fields, including commit / rollback")

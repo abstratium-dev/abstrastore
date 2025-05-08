@@ -38,12 +38,12 @@ func (t *Table) GetIndex(field string) (*Index, error) {
 			return &index, nil
 		}
 	}
-	return nil, fmt.Errorf("no such index: %s", field)
+	return nil, fmt.Errorf("ADB-0033 no such index: %s", field)
 }
 
 func (t *Table) PathFromIndex(databaseTableIdTuple *DatabaseTableIdTuple) (string, error) {
 	if databaseTableIdTuple.Database != string(t.Database) || databaseTableIdTuple.Table != t.Name {
-		return "", fmt.Errorf("no such database or table, are you using the right table for the given index entry? %s", *databaseTableIdTuple)
+		return "", fmt.Errorf("ADB-0032 no such database or table, are you using the right table for the given index entry? %s", *databaseTableIdTuple)
 	}
 
 	return fmt.Sprintf("%s/%s.json", t.pathPrefix(), databaseTableIdTuple.Id), nil
@@ -59,7 +59,7 @@ func DatabaseTableIdTupleFromPath(path string) (*DatabaseTableIdTuple, error) {
 	// get the last part of the path, i.e. after the last slash
 	parts := strings.SplitN(path, "___", 3)
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid path since it does not contain three parts: %s", path)
+		return nil, fmt.Errorf("ADB-0034 invalid path since it does not contain three parts: %s", path)
 	}
 	database, table, id := parts[0], parts[1], parts[2]
 	return &DatabaseTableIdTuple{Database: database, Table: table, Id: id}, nil
