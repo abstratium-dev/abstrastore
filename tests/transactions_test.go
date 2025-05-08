@@ -3402,8 +3402,6 @@ func TestTransactions_InsertUpdateNotIndicies(t *testing.T) {
 
 func TestTransactions_TODO(t *testing.T) {
 
-	assert.Fail(t, "TODO insert and update with NO indexed fields, including commit / rollback")
-
 	assert.Fail(t, "TODO delete non-existant id")
 	assert.Fail(t, "TODO double delete")
 	assert.Fail(t, "TODO delete wildcard etag fails")
