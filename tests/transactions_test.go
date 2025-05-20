@@ -3,8 +3,11 @@ package minio
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -193,7 +196,7 @@ func TestTransactions_BeginInsertCommit(t *testing.T) {
 
 	repo := getRepo()
 
-	tx, err := repo.BeginTransaction(context.Background(), 10*time.Second)
+	tx, err := repo.BeginTransaction(context.Background(), 100*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,8 +225,8 @@ func TestTransactions_BeginInsertCommit(t *testing.T) {
 	// check that the account was inserted, find by index
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountsRead = []*Account{}
-	tx = schema.NewTransaction(10*time.Second)
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
+	tx = schema.NewTransaction(100*time.Second)
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(&accountsRead)
@@ -239,8 +242,8 @@ func TestTransactions_BeginInsertCommit(t *testing.T) {
 	// check that the account was inserted, find by id
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountRead = &Account{}
-	tx = schema.NewTransaction(10*time.Second)
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
+	tx = schema.NewTransaction(100*time.Second)
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -289,7 +292,7 @@ func TestTransactions_BeginInsertRollback(t *testing.T) {
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountsRead = []*Account{}
 	tx = schema.NewTransaction(10*time.Second)
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(&accountsRead)
@@ -305,7 +308,7 @@ func TestTransactions_BeginInsertRollback(t *testing.T) {
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountRead = &Account{}
 	tx = schema.NewTransaction(10*time.Second)
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -495,7 +498,7 @@ func TestTransactions_T1BeginInsert_T2BeginRead_ShouldNotSeeNonCommittedObject_B
 	// tx2 must not see the object inserted by tx1
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -508,7 +511,7 @@ func TestTransactions_T1BeginInsert_T2BeginRead_ShouldNotSeeNonCommittedObject_B
 	// ///////////////////////////////////////
 	// tx1 can of course still see it!
 	// ///////////////////////////////////////
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx1).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -591,7 +594,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	// tx1 must not see the committed object inserted by tx2, by id
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx1).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account2.Id).
 		Find(accountRead)
@@ -605,7 +608,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 	// tx1 must not see the committed object inserted by tx2, by index
 	// //////////////////////////////////////////////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx1).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account2.Name).
 		Find(accountsRead)
@@ -629,7 +632,7 @@ func TestTransactions_T1BeginInsert_T2BeginInsertCommit_T1ShouldNotSeeNonCommitt
 		}
 	}()
 
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account2.Id).
 		Find(accountRead)
@@ -759,7 +762,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_WithEmptyStringETag(t *t
 	// as that means "write in all cases"
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -794,7 +797,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_WithEmptyStringETag(t *t
 	// can see object using id
 	// ///////////////////////////////////////
 	accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -845,7 +848,7 @@ func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Commi
 	// as that means "write in all cases"
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -880,7 +883,7 @@ func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Commi
 	// can see object using id
 	// ///////////////////////////////////////
 	accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -931,7 +934,7 @@ func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Rollb
 	// as that means "write in all cases"
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -966,7 +969,7 @@ func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Rollb
 	// cannot see object using id
 	// ///////////////////////////////////////
 	accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -980,7 +983,7 @@ func TestTransactions_T2BeginUpdate_WithEmptyStringETag_UpsertLikeInsert_T2Rollb
 	// cannot see object using index
 	// ///////////////////////////////////////
 	var accountsRead []*Account
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(&accountsRead)
@@ -1068,7 +1071,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	// cannot see object using old index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -1081,7 +1084,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	// can see object using new index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(accountsRead)
@@ -1095,7 +1098,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateCommit_CheckObjectAndIndi
 	// can see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -1193,7 +1196,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	// cannot see object using new index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", newName).
 		Find(accountsRead)
@@ -1206,7 +1209,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	// can see object using old index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -1220,7 +1223,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdateRollback_CheckObjectAndIn
 	// can see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -1309,7 +1312,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	// cannot see object using old index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -1322,7 +1325,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	// cannot see object using middle index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", middleName).
 		Find(accountsRead)
@@ -1335,7 +1338,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	// can see object using final index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", finalName).
 		Find(accountsRead)
@@ -1349,7 +1352,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateCommit_ChecksMultipleUpdates(t *t
 	// can see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -1438,7 +1441,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	// cannot see object using middle index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", middleName).
 		Find(accountsRead)
@@ -1451,7 +1454,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	// cannot see object using new index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", finalName).
 		Find(accountsRead)
@@ -1464,7 +1467,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	// cannot see object using old index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -1477,7 +1480,7 @@ func TestTransactions_T1BeginInsertUpdateUpdateRollback_ChecksMultipleUpdates(t 
 	// cannot see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -1583,7 +1586,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	// cannot see object using middle index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", middleName).
 		Find(accountsRead)
@@ -1596,7 +1599,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	// cannot see object using new index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", finalName).
 		Find(accountsRead)
@@ -1609,7 +1612,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	// can see object using old index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -1623,7 +1626,7 @@ func TestTransactions_T1BeginInsertCommit_T2UpdateUpdateRollback_ChecksMultipleU
 	// can see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -1708,7 +1711,7 @@ func TestTransactions_T1BeginInsertCommit_T2Update_T3UpdateFailsFast_T2Commit_Ch
 	// ///////////////////////////////////////
 	var accountReadTx3 = &Account{}
 	var etagForUpdatingInTx3 *string
-	etagForUpdatingInTx3, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	etagForUpdatingInTx3, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountReadTx3)
@@ -1753,7 +1756,7 @@ func TestTransactions_T1BeginInsertCommit_T2Update_T3UpdateFailsFast_T2Commit_Ch
 	// cannot see object using old index entry
 	// ///////////////////////////////////////
 	var accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx4).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -1766,7 +1769,7 @@ func TestTransactions_T1BeginInsertCommit_T2Update_T3UpdateFailsFast_T2Commit_Ch
 	// cannot see object using tx3 index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx4).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", tx3UpdatedName).
 		Find(accountsRead)
@@ -1779,7 +1782,7 @@ func TestTransactions_T1BeginInsertCommit_T2Update_T3UpdateFailsFast_T2Commit_Ch
 	// can see object using updated index entry from tx2
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx4).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedName).
 		Find(accountsRead)
@@ -1793,7 +1796,7 @@ func TestTransactions_T1BeginInsertCommit_T2Update_T3UpdateFailsFast_T2Commit_Ch
 	// can see object using id
 	// ///////////////////////////////////////
 	accountRead := &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx4).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -1861,7 +1864,7 @@ func TestTransactions_T0Begin_T1BeginInsertCommit_T0CannotSeeObjectFromT1(t *tes
 	// t0 cannot see object using id
 	// ///////////////////////////////////////
 	var accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx0).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -1875,7 +1878,7 @@ func TestTransactions_T0Begin_T1BeginInsertCommit_T0CannotSeeObjectFromT1(t *tes
 	// t0 cannot see object using index entry
 	// ///////////////////////////////////////
 	accountsRead := &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx0).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(accountsRead)
@@ -1953,7 +1956,7 @@ func TestTransactions_T0Begin_T1BeginInsertUpdate_T0CannotSeeObjectFromT1(t *tes
 	// t0 cannot see object using id
 	// ///////////////////////////////////////
 	accountRead := &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx0).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -1967,7 +1970,7 @@ func TestTransactions_T0Begin_T1BeginInsertUpdate_T0CannotSeeObjectFromT1(t *tes
 	// t0 cannot see object using index entry
 	// ///////////////////////////////////////
 	accountsRead := &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx0).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(accountsRead)
@@ -2029,7 +2032,7 @@ func TestTransactions_T1BeginInsertUpdate_T1CanSeeOwnVersion_T2BeginCannotSeeT1(
 	// tx1 can read own by id
 	// ///////////////////////////////////////
 	accountRead := &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx1).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -2043,7 +2046,7 @@ func TestTransactions_T1BeginInsertUpdate_T1CanSeeOwnVersion_T2BeginCannotSeeT1(
 	// tx1 can read own by index
 	// ///////////////////////////////////////
 	accountsRead := &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx1).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(accountsRead)
@@ -2072,7 +2075,7 @@ func TestTransactions_T1BeginInsertUpdate_T1CanSeeOwnVersion_T2BeginCannotSeeT1(
 	// tx2 cannot see object using id
 	// ///////////////////////////////////////
 	accountRead = &Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -2086,7 +2089,7 @@ func TestTransactions_T1BeginInsertUpdate_T1CanSeeOwnVersion_T2BeginCannotSeeT1(
 	// tx2 cannot see object using index entry
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(accountsRead)
@@ -2149,7 +2152,7 @@ func TestTransactions_T1BeginInsertUpdate_CheckETagsAreCorrectOnReading(t *testi
 	// tx1 check read etag matches
 	// ///////////////////////////////////////
 	accountRead := &Account{}
-	etagRead, err := min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+	etagRead, err := min.NewTypedQuery[Account](repo, context.Background(), &tx1).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -2165,7 +2168,7 @@ func TestTransactions_T1BeginInsertUpdate_CheckETagsAreCorrectOnReading(t *testi
 	// ///////////////////////////////////////
 	accountsRead := &[]*Account{}
 	etagsRead := &map[string]*string{}
-	etagsRead, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Account{}).
+	etagsRead, err = min.NewTypedQuery[Account](repo, context.Background(), &tx1).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", account1.Name).
 		Find(accountsRead)
@@ -2262,7 +2265,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginRead_CheckETagsAr
 	// tx3 check read etag matches committed version since tx3 is after tx2 and tx2 isn't committed yet
 	// ///////////////////////////////////////
 	accountRead := &Account{}
-	etagRead, err := min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	etagRead, err := min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIdEquals(account1.Id).
 		Find(accountRead)
@@ -2278,7 +2281,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginRead_CheckETagsAr
 	// ///////////////////////////////////////
 	accountsRead := &[]*Account{}
 	etagsRead := &map[string]*string{}
-	etagsRead, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	etagsRead, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", oldName).
 		Find(accountsRead)
@@ -2373,7 +2376,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx3 read using original name => success
 	// ///////////////////////////////////////
 	accountsRead := &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", originalName).
 		Find(accountsRead)
@@ -2388,7 +2391,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx3 read using new name => fails
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedName).
 		Find(accountsRead)
@@ -2401,7 +2404,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx2 select using new name => success
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedName).
 		Find(accountsRead)
@@ -2416,7 +2419,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx2 select using original name => fails
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", originalName).
 		Find(accountsRead)
@@ -2441,7 +2444,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx3 read using original name => success
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", originalName).
 		Find(accountsRead)
@@ -2456,7 +2459,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx3 read using updated name => fails
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedName).
 		Find(accountsRead)
@@ -2469,7 +2472,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx3 read using second updated name => fails
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedNameAgain).
 		Find(accountsRead)
@@ -2482,7 +2485,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx2 select using second updated name => success
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedNameAgain).
 		Find(accountsRead)
@@ -2497,7 +2500,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx2 select using original name => fails
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", originalName).
 		Find(accountsRead)
@@ -2510,7 +2513,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx2 select using updated name => fails
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx2).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedName).
 		Find(accountsRead)
@@ -2533,7 +2536,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// mysql works like this!
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", originalName).
 		Find(accountsRead)
@@ -2548,7 +2551,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx3 read using updated name => fails
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedName).
 		Find(accountsRead)
@@ -2561,7 +2564,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx3 read using second updated name => fails
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx3).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedNameAgain).
 		Find(accountsRead)
@@ -2588,7 +2591,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx4 select using second updated name => success
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx4).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedNameAgain).
 		Find(accountsRead)
@@ -2603,7 +2606,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx4 select using original name => fails
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx4).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", originalName).
 		Find(accountsRead)
@@ -2616,7 +2619,7 @@ func TestTransactions_T1BeginInsertCommit_T2BeginUpdate_T3BeginSelectByIndex_T2S
 	// tx4 select using updated name => fails
 	// ///////////////////////////////////////
 	accountsRead = &[]*Account{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Account{}).
+	_, err = min.NewTypedQuery[Account](repo, context.Background(), &tx4).
 		SelectFromTable(T_ACCOUNT).
 		WhereIndexedFieldEquals("Name", updatedName).
 		Find(accountsRead)
@@ -2678,7 +2681,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// ensure tx0 cannot see object by index
 	// ///////////////////////////////////////
 	issuesRead := &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx0).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", issue.Title).
 		Find(issuesRead)
@@ -2691,7 +2694,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// ensure tx0 cannot see object by id
 	// ///////////////////////////////////////
 	var issueRead *Issue
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx0, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx0).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals(issue.Id).
 		Find(issueRead)
@@ -2706,7 +2709,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx1 can see object by index title
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx1).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", issue.Title).
 		Find(issuesRead)
@@ -2719,7 +2722,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx1 can see object by index body
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx1).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Body", issue.Body).
 		Find(issuesRead)
@@ -2776,7 +2779,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx3 read using original title => success
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", originalTitle).
 		Find(issuesRead)
@@ -2792,7 +2795,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx3 read using new title => fails
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", updatedTitle).
 		Find(issuesRead)
@@ -2805,7 +2808,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx3 read using body, should get original version of title
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Body", issue.Body).
 		Find(issuesRead)
@@ -2821,7 +2824,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx2 select using new title => success
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", updatedTitle).
 		Find(issuesRead)
@@ -2837,7 +2840,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx2 select using original title => fails
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", originalTitle).
 		Find(issuesRead)
@@ -2850,7 +2853,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx2 select using body should give updated title
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Body", issue.Body).
 		Find(issuesRead)
@@ -2878,7 +2881,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx3 read using original title => success
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", originalTitle).
 		Find(issuesRead)
@@ -2894,7 +2897,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx3 read using updated title => fails
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", updatedTitle).
 		Find(issuesRead)
@@ -2907,7 +2910,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx3 read using second updated title => fails
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", updatedTitleAgain).
 		Find(issuesRead)
@@ -2920,7 +2923,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx3 read using body => success with original title
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Body", issue.Body).
 		Find(issuesRead)
@@ -2936,7 +2939,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx2 select using second updated title => success
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", updatedTitleAgain).
 		Find(issuesRead)
@@ -2952,7 +2955,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx2 select using original title => fails
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", originalTitle).
 		Find(issuesRead)
@@ -2965,7 +2968,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx2 select using updated title => fails
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", updatedTitle).
 		Find(issuesRead)
@@ -2978,7 +2981,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx2 select using body => success, reads non-committed title
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Body", issue.Body).
 		Find(issuesRead)
@@ -3004,7 +3007,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// mysql works like this!
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", originalTitle).
 		Find(issuesRead)
@@ -3022,7 +3025,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// mysql works like this!
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Body", issue.Body).
 		Find(issuesRead)
@@ -3038,7 +3041,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx3 read using updated title => fails
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", updatedTitle).
 		Find(issuesRead)
@@ -3051,7 +3054,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx3 read using second updated title => fails
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", updatedTitleAgain).
 		Find(issuesRead)
@@ -3078,7 +3081,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx4 select using second updated title => success
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx4).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", updatedTitleAgain).
 		Find(issuesRead)
@@ -3094,7 +3097,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx4 select using body => success
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx4).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Body", issue.Body).
 		Find(issuesRead)
@@ -3110,7 +3113,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx4 select using original title => fails
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx4).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", originalTitle).
 		Find(issuesRead)
@@ -3123,7 +3126,7 @@ func TestTransactions_MultipleIndexedFields_T0Begin_T1BeginInsertCommit_T2BeginU
 	// tx4 select using updated title => fails
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx4).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", updatedTitle).
 		Find(issuesRead)
@@ -3208,7 +3211,7 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	// tx3 can no longer see object by index
 	// ///////////////////////////////////////
 	issuesRead := &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", originalTitle).
 		Find(issuesRead)
@@ -3221,7 +3224,7 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	// tx3 can no longer see object by id
 	// ///////////////////////////////////////
 	issueRead := &Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals(issue.Id).
 		Find(issueRead)
@@ -3235,7 +3238,7 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	// tx2 can still see object by index
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", originalTitle).
 		Find(issuesRead)
@@ -3251,7 +3254,7 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	// tx2 can still see object by id
 	// ///////////////////////////////////////
 	issueRead = &Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals(issue.Id).
 		Find(issueRead)
@@ -3273,7 +3276,7 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	// tx2 can still see object by index
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Body", issue.Body).
 		Find(issuesRead)
@@ -3289,7 +3292,7 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	// tx2 can still see object by id 
 	// ///////////////////////////////////////
 	issueRead = &Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals(issue.Id).
 		Find(issueRead)
@@ -3318,7 +3321,7 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	// tx4 cannot see object by id
 	// ///////////////////////////////////////
 	issueRead = &Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx4).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals(issue.Id).
 		Find(issueRead)
@@ -3332,7 +3335,7 @@ func TestTransactions_T1BeginInsertCommit_T2CanSelect_T3BeginDelete_T2CanStillSe
 	// tx4 cannot see object by index
 	// ///////////////////////////////////////
 	issuesRead = &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx4).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Body", issue.Body).
 		Find(issuesRead)
@@ -3380,7 +3383,7 @@ func TestTransactions_InsertUpdateNotIndicies(t *testing.T) {
 	// tx1 select by title - not indexed
 	// ///////////////////////////////////////
 	issuesRead := &[]*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx1).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", originalTitle).
 		Find(issuesRead)
@@ -3394,7 +3397,7 @@ func TestTransactions_InsertUpdateNotIndicies(t *testing.T) {
 	// tx1 select by id
 	// ///////////////////////////////////////
 	issueRead := &Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx1).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals(issue.Id).
 		Find(issueRead)
@@ -3424,7 +3427,7 @@ func TestTransactions_InsertUpdateNotIndicies(t *testing.T) {
 	// tx2 select by id
 	// ///////////////////////////////////////
 	issueRead = &Issue{}
-	etag2, err := min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	etag2, err := min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals(issue.Id).
 		Find(issueRead)
@@ -3449,7 +3452,7 @@ func TestTransactions_InsertUpdateNotIndicies(t *testing.T) {
 	// tx2 select by id
 	// ///////////////////////////////////////
 	issueRead = &Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx2, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals(issue.Id).
 		Find(issueRead)
@@ -3479,7 +3482,7 @@ func TestTransactions_InsertUpdateNotIndicies(t *testing.T) {
 	// tx3 select by id for delete
 	// ///////////////////////////////////////
 	issueRead = &Issue{}
-	etag2, err = min.NewTypedQuery(repo, context.Background(), &tx3, &Issue{}).
+	etag2, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals(issue.Id).
 		Find(issueRead)
@@ -3523,7 +3526,7 @@ func TestTransactions_InsertUpdateNotIndicies(t *testing.T) {
 	// tx4 select by id
 	// ///////////////////////////////////////
 	issueRead = &Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx4, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx4).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals(issue.Id).
 		Find(issueRead)
@@ -3562,7 +3565,7 @@ func TestTransactions_SelectAndDeleteNonExistantId(t *testing.T) {
 	// tx1 select by id
 	// ///////////////////////////////////////
 	issueRead := &Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx1, &Issue{}).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx1).
 		SelectFromTable(T_ISSUE).
 		WhereIdEquals("non-existant-id").
 		Find(issueRead)
@@ -3756,7 +3759,6 @@ func TestTransactions_EmptyETagDeleteWorksIfExistsAndNotExists(t *testing.T) {
 	}
 }
 
-
 func TestTransactions_T1BeginDelete_T2Begin_T1Commit_T2InsertCommit(t *testing.T) {
 	defer setupAndTeardown()()
 
@@ -3858,7 +3860,7 @@ func TestTransactions_T1BeginDelete_T2Begin_T1Commit_T2InsertCommit(t *testing.T
 	// tx3 read
 	// ///////////////////////////////////////
 	issuesRead := []*Issue{}
-	_, err = min.NewTypedQuery(repo, context.Background(), &tx3, issue).
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
 		SelectFromTable(T_ISSUE).
 		WhereIndexedFieldEquals("Title", issue.Title).
 		Find(&issuesRead)
@@ -3871,6 +3873,167 @@ func TestTransactions_T1BeginDelete_T2Begin_T1Commit_T2InsertCommit(t *testing.T
 	assert.Equal(t, issue.CreatedBy, issuesRead[0].CreatedBy)
 }
 
+func TestRangeScans_SelectTwoObjects(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ISSUE := schema.NewTable(DATABASE, "issue", []string{"Title"})
+
+	// ///////////////////////////////////////
+	// tx0 begin
+	// ///////////////////////////////////////
+	tx0, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	issue1 := &Issue{
+		Id:   uuid.NewString(),
+		Title: "Title RangeScan01 " + tx0.Id,
+		Body: "Body",
+	}
+	issue2 := &Issue{
+		Id:   uuid.NewString(),
+		Title: "Title RangeScan02 " + tx0.Id,
+		Body: "Body",
+	}
+
+	_, err = repo.InsertIntoTable(context.Background(), &tx0, T_ISSUE, issue1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = repo.InsertIntoTable(context.Background(), &tx0, T_ISSUE, issue2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ///////////////////////////////////////
+	// tx0 commit
+	// ///////////////////////////////////////
+	if errs := repo.Commit(context.Background(), &tx0); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+
+	// ///////////////////////////////////////
+	// tx1 begin
+	// ///////////////////////////////////////
+	tx1, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx1)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
+
+	// ///////////////////////////////////////
+	// tx1 select
+	// ///////////////////////////////////////
+	issuesRead := []*Issue{}
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx1).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldMatches("Title", "Titl.*RangeScan.*").
+		Find(&issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(2, len(issuesRead))
+	slices.SortFunc(issuesRead, func(a, b *Issue) int {
+		return strings.Compare(a.Title, b.Title)
+	})
+	assert.Equal("Title RangeScan01 " + tx0.Id, issuesRead[0].Title)
+	assert.Equal("Title RangeScan02 " + tx0.Id, issuesRead[1].Title)
+
+	// ///////////////////////////////////////
+	// tx2 begin - lower case fails
+	// ///////////////////////////////////////
+	tx2, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx2)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
+
+	// ///////////////////////////////////////
+	// tx2 select
+	// ///////////////////////////////////////
+	issuesRead = []*Issue{}
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx2).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldMatches("Title", "titl.*rangescan.*").
+		Find(&issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(0, len(issuesRead))
+
+	// ///////////////////////////////////////
+	// tx3 begin - case insensitive passes
+	// ///////////////////////////////////////
+	tx3, err := repo.BeginTransaction(context.Background(), 120*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		errs := repo.Rollback(context.Background(), &tx3)
+		if len(errs) > 0 {
+			t.Fatal(errs)
+		}
+	}()
+
+	// ///////////////////////////////////////
+	// tx3 select
+	// ///////////////////////////////////////
+	issuesRead = []*Issue{}
+	_, err = min.NewTypedQuery[Issue](repo, context.Background(), &tx3).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldMatches("Title", "(?i)tItL.*rAnGescan.*").
+		Find(&issuesRead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(2, len(issuesRead))
+	slices.SortFunc(issuesRead, func(a, b *Issue) int {
+		return strings.Compare(a.Title, b.Title)
+	})
+	assert.Equal("Title RangeScan01 " + tx0.Id, issuesRead[0].Title)
+	assert.Equal("Title RangeScan02 " + tx0.Id, issuesRead[1].Title)
+}
+
+func TestRangeScans_BadRegex(t *testing.T) {
+	defer setupAndTeardown()()
+	assert := assert.New(t)
+
+	repo := getRepo()
+
+	DATABASE := schema.NewDatabase("transactions-tests")
+	T_ISSUE := schema.NewTable(DATABASE, "issue", []string{"Title"})
+
+    defer func() {
+		r := recover(); 
+        if r == nil {
+			t.Fatal("expected panic")
+        } else {
+			assert.Equal("regexp: Compile(`(?i)*****`): error parsing regexp: missing argument to repetition operator: `*`", fmt.Sprintf("%v", r))
+		}
+    }()
+
+	min.NewTypedQuery[Issue](repo, context.Background(), nil).
+		SelectFromTable(T_ISSUE).
+		WhereIndexedFieldMatches("Title", "*****") // <<<<< bad regex
+
+	t.Fatal("expected panic")
+}
+
 func TestTransactions_TODO(t *testing.T) {
 
 	assert.Fail(t, "TODO delete update delete again")
@@ -3878,7 +4041,7 @@ func TestTransactions_TODO(t *testing.T) {
 	assert.Fail(t, "TODO relationships and reading Issue and Watch based on AccountId")
 	assert.Fail(t, "TODO relationships check rollback works with multiple inserts")
 // TODO do we need to document that there is no referential integrity? or do we enforce ref int when inserting we 
-// could check for existance of foreign keys, if DDL describes what to check for?
+// could check for existance of foreign keys, if DDL describes what to check for? we'd have to support not deleting if FKs were broken
 
 	assert.Fail(t, "TODO test rollback works when we were unable to write the final transaction file upon insert")
 	assert.Fail(t, "TODO t1 BeginDelete_T2BeginInsert_FailsWithStaleObject or something because the file still exists")

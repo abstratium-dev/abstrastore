@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -160,7 +161,6 @@ func GetRepository() *MinioRepository {
 
 type TypedQuery[T any] struct {
 	ctx      context.Context
-	template *T
 	repo     *MinioRepository
 	tx       *schema.Transaction
 }
@@ -168,12 +168,11 @@ type TypedQuery[T any] struct {
 // Param: repo - the repository to use
 // Param: ctx - the context to use
 // Param: transaction - the transaction to use
-// Param: template - the template of type T, used to unmarshal the JSON data
+// Param: template - the type T
 // Returns: a new TypedQuery[T] instance
-func NewTypedQuery[T any](repo *MinioRepository, ctx context.Context, transaction *schema.Transaction, template *T) TypedQuery[T] {
+func NewTypedQuery[T any](repo *MinioRepository, ctx context.Context, transaction *schema.Transaction) TypedQuery[T] {
 	return TypedQuery[T]{
 		ctx:      ctx,
-		template: template,
 		repo:     repo,
 		tx:       transaction,
 	}
@@ -187,44 +186,85 @@ type ContextContainer[T any] struct {
 }
 
 func (c TypedQuery[T]) SelectFromTable(table schema.Table) WhereContainer[T] {
-	return WhereContainer[T]{c.ctx, c.repo, table, c.template, c.tx}
+	return WhereContainer[T]{c.ctx, c.repo, table, c.tx}
 }
 
 type WhereContainer[T any] struct {
 	ctx      context.Context
 	repo     *MinioRepository
 	table    schema.Table
-	template *T
 	tx       *schema.Transaction
 }
 
-func (w WhereContainer[T]) WhereIndexedFieldEquals(fieldName string, value string) FindByIndexedFieldContainer[T] {
-	return FindByIndexedFieldContainer[T]{w.ctx, w.repo, w.table, w.template, fieldName, value, w.tx}
+func (w WhereContainer[T]) WhereIndexedFieldEquals(fieldName string, value string) FindByIndexedFieldEqualsContainer[T] {
+	return FindByIndexedFieldEqualsContainer[T]{w.ctx, w.repo, w.table, fieldName, value, w.tx}
+}
+
+func (w WhereContainer[T]) WhereIndexedFieldMatches(fieldName string, regexString string) FindByIndexedFieldMatchesContainer[T] {
+	// for index searching
+	var regexCaseInsensitive *regexp.Regexp
+	if(strings.HasPrefix(regexString, "(?i)")) {
+		regexCaseInsensitive = regexp.MustCompile(regexString)
+	} else {
+		regexCaseInsensitive = regexp.MustCompile("(?i)" + regexString)
+	}
+
+	// for checking the object
+	regexAsSpecifiedByUser := regexp.MustCompile(regexString)
+
+	return FindByIndexedFieldMatchesContainer[T]{w.ctx, w.repo, w.table, fieldName, regexCaseInsensitive, regexAsSpecifiedByUser, w.tx}
 }
 
 func (w WhereContainer[T]) WhereIdEquals(id string) FindByIdContainer[T] {
-	return FindByIdContainer[T]{w.ctx, w.repo, w.table, w.template, id, w.tx}
+	return FindByIdContainer[T]{w.ctx, w.repo, w.table, id, w.tx}
 }
 
-type FindByIndexedFieldContainer[T any] struct {
-	ctx      context.Context
-	repo     *MinioRepository
-	table    schema.Table
-	template *T
-	fieldName    string
-	value    string
-	tx       *schema.Transaction
+type FindByIndexedFieldEqualsContainer[T any] struct {
+	ctx       context.Context
+	repo      *MinioRepository
+	table     schema.Table
+	fieldName string
+	value     string
+	tx        *schema.Transaction
+}
+
+type FindByIndexedFieldMatchesContainer[T any] struct {
+	ctx       context.Context
+	repo      *MinioRepository
+	table     schema.Table
+	fieldName string
+	regexCaseInsensitive   *regexp.Regexp
+	regexAsSpecifiedByUser *regexp.Regexp
+	tx        *schema.Transaction
 }
 
 // sql: select * from table_name where column1 = value1 (column1 is in an index)
 // Param: destination - the address of a slice of T, where the results will be stored, i.e. a slice of entities where the foreign key matches
 // Returns: a map of entity ids to ETags, and an error if any occurred
-func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) (*map[string]*string, error) {
-	var etags = make(map[string]*string)
+func (f FindByIndexedFieldEqualsContainer[T]) Find(destination *[]*T) (*map[string]*string, error) {
 	coordinates := make([]schema.DatabaseTableIdTuple, 0, 10)
 	if err := f.findIds(&coordinates); err != nil {
 		return nil, err
 	}
+
+	predicate := func(t *T) (bool, error) { 
+
+		fieldValue, err := getFieldValueAsString(t, f.fieldName)
+		if err != nil {
+			return false, err
+		}
+
+		// TODO other predicates too like regex, <, >, etc.
+		if fieldValue == f.value {
+			return true, nil
+		}
+		return false, nil
+	}
+	return find(f.ctx, f.repo, f.tx, f.table, predicate, coordinates, destination)
+}
+
+func find[T any](ctx context.Context, repo *MinioRepository, transaction *schema.Transaction, table schema.Table, predicate func(*T) (bool, error), coordinates []schema.DatabaseTableIdTuple, destination *[]*T) (*map[string]*string, error) {
+	var etags = make(map[string]*string)
 
 	// the coordinates should all belong to the same DB and table, otherwise something is odd with the indices
 	if len(coordinates) > 0 {
@@ -246,20 +286,21 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) (*map[string]*st
 	for i, coordinate := range coordinates {
 		go func(i int, coordinate schema.DatabaseTableIdTuple) {
 			defer wg.Done()
-			path, err := f.table.PathFromIndex(&coordinate)
+			path, err := table.PathFromIndex(&coordinate)
 			if err != nil {
 				errors[i] = &err
 				return
 			}
 
 			var etag *string
-			etag, existsInTx, err := getByPath(f.ctx, f.repo, f.tx, path, f.template)
+			var template *T = new(T)
+			etag, existsInTx, err := getByPath(ctx, repo, transaction, path, template)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
 				errors[i] = &err
 			} else if existsInTx {
-				results[i] = f.template
+				results[i] = template
 				etags[coordinate.Id] = etag
 			} else {
 				results[i] = nil
@@ -284,11 +325,10 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) (*map[string]*st
 		// that is because we cannot fully trust the indices - they still contain old entries in case other transactions
 		// need to find old versions of data, and they contain new entries, which while those should have been skipped
 		// if they belong to transactions that are in progress, it is still better to double check here.
-		fieldValue, err := getFieldValueAsString(result, f.fieldName)
+		ok, err := predicate(result)
 		if err != nil {
 			return nil, err
-		}
-		if fieldValue == f.value { // TODO other predicates too like regex, <, >, etc.
+		} else if ok {
 			*destination = append(*destination, result)
 		}
 	}
@@ -297,8 +337,55 @@ func (f FindByIndexedFieldContainer[T]) Find(destination *[]*T) (*map[string]*st
 
 // not public, because without checking metadata of actual files, against transactions in progress, it's not safe to use these.
 // we pass these up, but the caller must ensure that versions exist for this transaction by comparing to others that are in progress
-func (f FindByIndexedFieldContainer[T]) findIds(destination *[]schema.DatabaseTableIdTuple) error {
-	paths, err := f.repo.selectPathsFromTableWhereIndexedFieldEquals(f.ctx, f.tx, f.table, f.fieldName, f.value)
+func (f FindByIndexedFieldEqualsContainer[T]) findIds(destination *[]schema.DatabaseTableIdTuple) error {
+	index, err := f.table.GetIndex(f.fieldName)
+	if err != nil {
+		return err
+	}
+	paths, err := f.repo.selectPathsFromTableWhereIndexedFieldMatches(f.ctx, f.tx, index.PathNoId(f.value), nil)
+	if err != nil {
+		return err
+	}
+	*destination = make([]schema.DatabaseTableIdTuple, 0, paths.Len())
+	for _, path := range paths.Items() {
+		databaseTableIdTuple, err := schema.DatabaseTableIdTupleFromPath(path)
+		if err != nil {
+			return err
+		}
+		*destination = append(*destination, *databaseTableIdTuple)
+	}
+	return nil
+}
+
+// sql: select * from table_name where column1 matches(value1) (column1 is in an index)
+// Param: destination - the address of a slice of T, where the results will be stored, i.e. a slice of entities where the foreign key matches
+// Returns: a map of entity ids to ETags, and an error if any occurred.
+// The regular expression MUST ignore case for this to work (because index entries are stored in lower case, but field values might be mixed case)!
+func (f FindByIndexedFieldMatchesContainer[T]) Find(destination *[]*T) (*map[string]*string, error) {
+	coordinates := make([]schema.DatabaseTableIdTuple, 0, 10)
+	if err := f.findIds(&coordinates); err != nil {
+		return nil, err
+	}
+
+	predicate := func(t *T) (bool, error) {
+		fieldValue, err := getFieldValueAsString(t, f.fieldName)
+		if err != nil {
+			return false, err
+		}
+		return f.regexAsSpecifiedByUser.MatchString(fieldValue), nil
+	}
+
+	return find(f.ctx, f.repo, f.tx, f.table, predicate, coordinates, destination)
+}
+
+// not public, because without checking metadata of actual files, against transactions in progress, it's not safe to use these.
+// we pass these up, but the caller must ensure that versions exist for this transaction by comparing to others that are in progress
+func (f FindByIndexedFieldMatchesContainer[T]) findIds(destination *[]schema.DatabaseTableIdTuple) error {
+	index, err := f.table.GetIndex(f.fieldName)
+	if err != nil {
+		return err
+	}
+	paths, err := f.repo.selectPathsFromTableWhereIndexedFieldMatches(f.ctx, f.tx, index.PathPrefix(), f.regexCaseInsensitive) // case insensitive since indices are stored that way
 	if err != nil {
 		return err
 	}
@@ -317,7 +404,6 @@ type FindByIdContainer[T any] struct {
 	ctx      context.Context
 	repo     *MinioRepository
 	table    schema.Table
-	template *T
 	id       string
 	tx       *schema.Transaction
 }
@@ -865,17 +951,13 @@ func (r *MinioRepository) executeTransactionSteps(ctx context.Context, transacti
 	return etag, nil
 }
 
-// sql: select * from table_name where column1 = value1 (column1 is in an index)
-func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx context.Context, transaction *schema.Transaction, table schema.Table, fieldName string, value string) (*util.MutList[string], error) {
+// sql: select * from table_name where column1 matches(value1) (column1 is in an index)
+func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldMatches(ctx context.Context, transaction *schema.Transaction, prefix string, regex *regexp.Regexp) (*util.MutList[string], error) {
 	matchingPaths := util.NewMutList[string]()
-	// use the index definition to find the path of the actual record containing the data that the caller wants to read
-	index, err := table.GetIndex(fieldName)
-	if err != nil {
-		return matchingPaths, err
-	}
-	indexPath := index.PathNoId(value) + "/" // add a slash since we don't do a recursive search, and without it, it just returns the folder, not the files in the folder
 
-	// only need one per path. but there can be multiple version, so only select the one that is older than the transaction start time
+	// only need one per path. this is like a poor mans set.
+	// but there can be multiple version, so only select the one that is older than the transaction start time.
+	// hmmm is that true that there can be multiple versions? i don't think it is, since index entries contain no data. but it doesn't hurt to do it like this.
 	relevantPaths := make(map[string]bool) // effectively a set
 
 	errors := util.NewMutList[error]()
@@ -891,7 +973,8 @@ func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx contex
 
 	// Goroutine to list objects and send them to the channel
 	listOpts := minio.ListObjectsOptions{
-		Prefix: indexPath, // default is non-recursive
+		Prefix: prefix,
+		Recursive: true,
 		WithMetadata: true,
 		// versions are irrelevant on index entries because we store no data, just the path. so we use the metadata to know if it was created after the tx started (e.g. by a different transaction)
 	}
@@ -902,6 +985,7 @@ func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx contex
 			// last modified is used to ignore index entries that are created after the transaction started,
 			// since snapshot isolation requires that we see the state of the database as it was at the start 
 			// of the transaction, not afterwards.
+			// note, and index entry is never modified only ever created or tombstoned/deleted, so we don't need to worry about versions
 			lastModifiedFromMetadata := object.UserMetadata[MINIO_META_PREFIX+schema.LAST_MODIFIED]
 			lastModified, err := strconv.ParseInt(lastModifiedFromMetadata, 10, 64)
 			if err != nil {
@@ -935,13 +1019,20 @@ func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx contex
 	// add anything from the cache that matches the path, because those have a LastModified in Minio that
 	// is newer than the tx start, but they are still relevant
 	for key := range transaction.Cache {
-		if strings.HasPrefix(key, indexPath) {
+		if strings.HasPrefix(key, prefix) {
 			relevantPaths[key] = true
 		}
 	}
 
 	for key := range relevantPaths {
-		matchingPaths.Add(key)
+		// if optional regex is present, use it, otherwise assume it matches
+		if regex != nil {
+			if regex.MatchString(key) {
+				matchingPaths.Add(key)
+			}
+		} else {
+			matchingPaths.Add(key)
+		}
 	}
 
 	if errors.Len() > 0 {
@@ -951,7 +1042,7 @@ func (r *MinioRepository) selectPathsFromTableWhereIndexedFieldEquals(ctx contex
 	return matchingPaths, nil
 }
 
-func getFieldValueAsString(obj interface{}, fieldName string) (string, error) {
+func getFieldValueAsString(obj any, fieldName string) (string, error) {
 	v := reflect.ValueOf(obj)
 
 	// If it's a pointer, get the value it points to

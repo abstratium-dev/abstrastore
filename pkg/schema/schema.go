@@ -82,7 +82,7 @@ type Index struct {
 	Field string `json:"field"`
 }
 
-func (i *Index) pathPrefix() string {
+func (i *Index) PathPrefix() string {
 	return fmt.Sprintf("%s/%s/indices/%s", i.Table.Database, i.Table.Name, i.Field)
 }
 
@@ -92,7 +92,7 @@ func (i *Index) PathNoId(fieldValue string) string {
 		fieldValue = "_" + fieldValue
 	}
 	fieldValue = strings.ToLower(fieldValue)
-	return fmt.Sprintf("%s/%s/%s", i.pathPrefix(), fieldValue[:2], fieldValue)
+	return fmt.Sprintf("%s/%s/%s", i.PathPrefix(), fieldValue[:2], fieldValue)
 }
 
 // path to the index entry, i.e. the path to the actual record.
